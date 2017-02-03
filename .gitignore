@@ -1,5 +1,6 @@
 /venv
 /logs
 /datasets/processed
+/model/.idea
 /.idea
 /.ipynb_checkpoints
