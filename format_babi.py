@@ -16,7 +16,7 @@ from tqdm import tqdm
 FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string('source_dir', 'datasets/', 'Directory containing bAbI sources.')
-tf.app.flags.DEFINE_string('dest_dir', 'datasets/processed/', 'Where to write datasets.')
+tf.app.flags.DEFINE_string('target_dir', 'datasets/processed/', 'Where to write datasets.')
 tf.app.flags.DEFINE_boolean('include_10k', False, 'Whether to use 10k or 1k examples.')
 
 SPLIT_RE = re.compile('(\W+)?')
@@ -31,11 +31,13 @@ def tokenize_char(sentence):
     """
     return list(sentence.lower())
 
+
 def tokenize(sentence):
     """
     Tokenize a string by splitting on non-word characters and stripping whitespace.
     """
     return [token.strip().lower() for token in re.split(SPLIT_RE, sentence) if token.strip()]
+
 
 def parse_stories(lines, only_supporting=False):
     """
@@ -67,12 +69,14 @@ def parse_stories(lines, only_supporting=False):
             story.append(sentence)
     return stories
 
+
 def truncate_stories(stories, max_length):
     stories_truncated = []
     for story, query, answer in stories:
         story_truncated = story[-max_length:]
         stories_truncated.append((story_truncated, query, answer))
     return stories_truncated
+
 
 def get_tokenizer(stories):
     """
@@ -85,6 +89,7 @@ def get_tokenizer(stories):
     token_to_id = {token: i for i, token in enumerate(vocab)}
     return token_to_id
 
+
 def tokenize_stories(stories, token_to_id):
     """
     Convert all tokens into their unique ids.
@@ -96,6 +101,7 @@ def tokenize_stories(stories, token_to_id):
         answer = token_to_id[answer]
         story_ids.append((story, query, answer))
     return story_ids
+
 
 def pad_stories(stories, max_sentence_length, max_story_length, max_query_length):
     """
@@ -118,8 +124,10 @@ def pad_stories(stories, max_sentence_length, max_story_length, max_query_length
 
     return stories
 
+
 def int64_features(value):
     return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
+
 
 def save_dataset(stories, path):
     """
@@ -141,8 +149,8 @@ def save_dataset(stories, path):
 
 
 def main():
-    if not os.path.exists(FLAGS.dest_dir):
-        os.makedirs(FLAGS.dest_dir)
+    if not os.path.exists(FLAGS.target_dir):
+        os.makedirs(FLAGS.target_dir)
 
     filenames = [
         'qa1_single-supporting-fact',
@@ -171,16 +179,16 @@ def main():
         if FLAGS.include_10k:
             stories_path_train = os.path.join('tasks_1-20_v1-2/en-10k/', filename + '_train.txt')
             stories_path_test = os.path.join('tasks_1-20_v1-2/en-10k/', filename + '_test.txt')
-            dataset_path_train = os.path.join(FLAGS.dest_dir, filename + '_10k_train.tfrecords')
-            dataset_path_test = os.path.join(FLAGS.dest_dir, filename + '_10k_test.tfrecords')
-            metadata_path = os.path.join(FLAGS.dest_dir, filename + '_10k.json')
+            dataset_path_train = os.path.join(FLAGS.target_dir, filename + '_10k_train.tfrecords')
+            dataset_path_test = os.path.join(FLAGS.target_dir, filename + '_10k_test.tfrecords')
+            metadata_path = os.path.join(FLAGS.target_dir, filename + '_10k.json')
             dataset_size = 10000
         else:
             stories_path_train = os.path.join('tasks_1-20_v1-2/en/', filename + '_train.txt')
             stories_path_test = os.path.join('tasks_1-20_v1-2/en/', filename + '_test.txt')
-            dataset_path_train = os.path.join(FLAGS.dest_dir, filename + '_1k_train.tfrecords')
-            dataset_path_test = os.path.join(FLAGS.dest_dir, filename + '_1k_test.tfrecords')
-            metadata_path = os.path.join(FLAGS.dest_dir, filename + '_1k.json')
+            dataset_path_train = os.path.join(FLAGS.target_dir, filename + '_1k_train.tfrecords')
+            dataset_path_test = os.path.join(FLAGS.target_dir, filename + '_1k_test.tfrecords')
+            metadata_path = os.path.join(FLAGS.target_dir, filename + '_1k.json')
             dataset_size = 1000
 
         # From the entity networks paper:
@@ -229,13 +237,12 @@ def main():
             }
             json.dump(metadata, f)
 
-        stories_pad_train = pad_stories(stories_token_train, \
-            max_sentence_length, max_story_length, max_query_length)
-        stories_pad_test = pad_stories(stories_token_test, \
-            max_sentence_length, max_story_length, max_query_length)
+        stories_pad_train = pad_stories(stories_token_train, max_sentence_length, max_story_length, max_query_length)
+        stories_pad_test = pad_stories(stories_token_test, max_sentence_length, max_story_length, max_query_length)
 
         save_dataset(stories_pad_train, dataset_path_train)
         save_dataset(stories_pad_test, dataset_path_test)
+
 
 if __name__ == '__main__':
     main()
