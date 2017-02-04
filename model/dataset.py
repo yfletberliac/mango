@@ -19,6 +19,7 @@ class Data(object):
         self.max_sentence_length = metadata['max_sentence_length']
         self.max_story_length = metadata['max_story_length']
         self.max_query_length = metadata['max_query_length']
+        self.max_story_char_length = metadata['max_story_char_length']
         self.dataset_size = metadata['dataset_size']
         self.vocab_size = metadata['vocab_size']
         self.tokens = metadata['tokens']
@@ -31,7 +32,7 @@ class Data(object):
     def get_input_fn(self, name, num_epochs, shuffle):
         def input_fn():
             features = {
-                "story": tf.FixedLenFeature([self.max_story_length, self.max_sentence_length], dtype=tf.int64),
+                "story": tf.FixedLenFeature([1, self.max_story_char_length], dtype=tf.int64),
                 "query": tf.FixedLenFeature([1, self.max_query_length], dtype=tf.int64),
                 "answer": tf.FixedLenFeature([], dtype=tf.int64),
             }

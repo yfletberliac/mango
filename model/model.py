@@ -11,12 +11,11 @@ import tensorflow as tf
 def model_fn(features, targets, mode, params, scope=None):
     embedding_size = params['embedding_size']
     vocab_size = params['vocab_size']
-    max_sentence_length = params['max_sentence_length']
-    max_story_length = params['max_story_length']
+    max_story_char_length = params['max_story_char_length']
     hidden_units = params['hidden_units']
     debug = params['debug']
 
-    story = features['story']  # 10 * 33
+    story = features['story']  # ? * 1 * 311
 
     batch_size = tf.shape(story)[0]
     normal_initializer = tf.random_normal_initializer(stddev=0.1)
@@ -28,19 +27,17 @@ def model_fn(features, targets, mode, params, scope=None):
                                      dtype=tf.float32,
                                      shape=[vocab_size, 1])
         embedding_params_masked = embedding_params * embedding_mask  # 38 * 10
-        story_embedding = tf.nn.embedding_lookup(embedding_params_masked, story)  # 10 * 33 * 10
+        story_embedding = tf.nn.embedding_lookup(embedding_params_masked, story)  # ? * 1 * 311 * 10
 
         # Recurrence
+        story_length = get_story_char_length(story_embedding)
+        embedded_input = tf.reshape(story_embedding, [batch_size, max_story_char_length, embedding_size])
+
         cell = tf.nn.rnn_cell.GRUCell(hidden_units)
         initial_state = cell.zero_state(batch_size, tf.float32)
 
-        story_length = get_story_length(story_embedding)
-        sentence_length = get_sentence_length(story_embedding)
-
-        embedded_input = tf.reshape(story_embedding, [batch_size, max_sentence_length*max_story_length, embedding_size])
-
         outputs_rnn1, last_state = tf.nn.dynamic_rnn(cell, embedded_input,
-                                                     sequence_length=story_length*max_sentence_length,
+                                                     sequence_length=story_length,
                                                      initial_state=initial_state)
 
         # Output
@@ -55,7 +52,6 @@ def model_fn(features, targets, mode, params, scope=None):
         train_op = training_optimizer(loss, params, mode)
 
         if debug:
-            tf.contrib.layers.summarize_tensor(sentence_length, 'sentence_length')
             tf.contrib.layers.summarize_tensor(story_length, 'story_length')
             tf.contrib.layers.summarize_tensor(outputs_rnn1, 'outputs_rnn1')
             tf.contrib.layers.summarize_tensor(last_state, 'last_state')
@@ -67,24 +63,14 @@ def model_fn(features, targets, mode, params, scope=None):
         return prediction, loss, train_op
 
 
-def get_story_length(sequence, scope=None):
-    """
-    Find the actual length of a story that has been padded with zeros.
-    """
-    with tf.variable_scope(scope, 'StoryLength'):
-        used = tf.sign(tf.reduce_max(tf.abs(sequence), reduction_indices=[-1]))
-        tmp = tf.reduce_max(used, reduction_indices=[-1])
-        length = tf.cast(tf.reduce_sum(tmp, reduction_indices=[-1]), tf.int32)
-        return length
-
-
-def get_sentence_length(sequence, scope=None):
+def get_story_char_length(sequence, scope=None):
     """
     Find the actual length of a sentence that has been padded with zeros.
     """
-    with tf.variable_scope(scope, 'SentenceLength'):  # 10 * 33 * 1O
+    with tf.variable_scope(scope, 'SentenceLength'):  # ? * 1 * 311 * 1O
         used = tf.sign(tf.reduce_max(tf.abs(sequence), reduction_indices=[-1]))
-        length = tf.cast(tf.reduce_sum(used, reduction_indices=[-1]), tf.int32)
+        tmp = tf.cast(tf.reduce_sum(used, reduction_indices=[-1]), tf.int32)
+        length = tf.reduce_max(tmp, reduction_indices=[-1])
         return length
 
 
