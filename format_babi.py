@@ -103,26 +103,34 @@ def tokenize_stories(stories, token_to_id):
     return story_ids
 
 
-def pad_stories(stories, max_sentence_length, max_story_length, max_query_length):
-    """
-    Pad sentences, stories, and queries to a consistence length.
-    """
-    for story, query, answer in stories:
+def get_max_story_char_length(story):
+    char_total_length = []
+    for story, _, _ in story:
+        char_length = []
         for sentence in story:
-            for _ in range(max_sentence_length - len(sentence)):
-                sentence.append(PAD_ID)
-            assert len(sentence) == max_sentence_length
+            char_length.append(len(sentence))
+        char_total_length.append(sum(char_length))
+    return max(char_total_length)
 
-        for _ in range(max_story_length - len(story)):
-            story.append([PAD_ID for _ in range(max_sentence_length)])
 
+def pad_stories(stories, max_story_char_length, max_query_length):
+    """
+    Pad single vector stories, and queries to a consistence length.
+    """
+    padded_story = []
+    for story, query, answer in stories:
+        story_flat = [token_id for sentence in story for token_id in sentence]
+
+        for _ in range(max_story_char_length - len(story_flat)):
+            story_flat.append(PAD_ID)
         for _ in range(max_query_length - len(query)):
             query.append(PAD_ID)
 
-        assert len(story) == max_story_length
+        padded_story.append([story_flat, query, answer])
+        assert len(story_flat) == max_story_char_length
         assert len(query) == max_query_length
 
-    return stories
+    return padded_story
 
 
 def int64_features(value):
@@ -135,10 +143,9 @@ def save_dataset(stories, path):
     """
     writer = tf.python_io.TFRecordWriter(path)
     for story, query, answer in stories:
-        story_flat = [token_id for sentence in story for token_id in sentence]
 
         features = tf.train.Features(feature={
-            'story': int64_features(story_flat),
+            'story': int64_features(story),
             'query': int64_features(query),
             'answer': int64_features([answer]),
         })
@@ -219,6 +226,7 @@ def main():
         max_sentence_length = max([len(sentence) for story, _, _ in stories_token_all for sentence in story])
         max_story_length = max([len(story) for story, _, _ in stories_token_all])
         max_query_length = max([len(query) for _, query, _ in stories_token_all])
+        max_story_char_length = get_max_story_char_length(stories_token_all)
         vocab_size = len(token_to_id)
 
         with open(metadata_path, 'w') as f:
@@ -228,6 +236,7 @@ def main():
                 'max_sentence_length': max_sentence_length,
                 'max_story_length': max_story_length,
                 'max_query_length': max_query_length,
+                'max_story_char_length': max_story_char_length,
                 'vocab_size': vocab_size,
                 'tokens': token_to_id,
                 'datasets': {
@@ -237,8 +246,10 @@ def main():
             }
             json.dump(metadata, f)
 
-        stories_pad_train = pad_stories(stories_token_train, max_sentence_length, max_story_length, max_query_length)
-        stories_pad_test = pad_stories(stories_token_test, max_sentence_length, max_story_length, max_query_length)
+        stories_pad_train = pad_stories(stories_token_train, max_story_char_length, max_query_length)
+        stories_pad_test = pad_stories(stories_token_test, max_story_char_length, max_query_length)
+
+        print(stories_pad_train[0])
 
         save_dataset(stories_pad_train, dataset_path_train)
         save_dataset(stories_pad_test, dataset_path_test)
