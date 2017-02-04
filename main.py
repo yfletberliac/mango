@@ -40,6 +40,7 @@ def main(_):
         'vocab_size': dataset.vocab_size,
         'max_sentence_length': dataset.max_sentence_length,
         'max_story_length': dataset.max_story_length,
+        'max_story_char_length': dataset.max_story_char_length,
         'embedding_size': FLAGS.embedding_size,
         'hidden_units': FLAGS.hidden_units,
         'learning_rate_init': FLAGS.learning_rate,
