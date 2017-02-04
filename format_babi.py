@@ -249,8 +249,6 @@ def main():
         stories_pad_train = pad_stories(stories_token_train, max_story_char_length, max_query_length)
         stories_pad_test = pad_stories(stories_token_test, max_story_char_length, max_query_length)
 
-        print(stories_pad_train[0])
-
         save_dataset(stories_pad_train, dataset_path_train)
         save_dataset(stories_pad_test, dataset_path_test)
 
