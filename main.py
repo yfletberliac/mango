@@ -20,9 +20,9 @@ tf.app.flags.DEFINE_integer('seed', 14, 'Random seed.')
 tf.app.flags.DEFINE_string('dataset_path', 'datasets/processed/qa1_single-supporting-fact_1k.json', 'Dataset path.')
 tf.app.flags.DEFINE_string('model_dir', 'logs/', 'Model directory.')
 tf.app.flags.DEFINE_integer('examples_per_epoch', 1000, 'Number of examples per epoch.')
-tf.app.flags.DEFINE_integer('batch_size', 128, 'Batch size.')
-tf.app.flags.DEFINE_integer('num_epochs', 300, 'Number of training epochs.')
-tf.app.flags.DEFINE_integer('embedding_size', 10, 'Embedding size.')
+tf.app.flags.DEFINE_integer('batch_size', 64, 'Batch size.')
+tf.app.flags.DEFINE_integer('num_epochs', 200, 'Number of training epochs.')
+tf.app.flags.DEFINE_integer('embedding_size', 20, 'Embedding size.')
 tf.app.flags.DEFINE_integer('hidden_units', 100, 'GRU hidden units.')
 tf.app.flags.DEFINE_float('learning_rate', 1e-2, 'Base learning rate.')
 tf.app.flags.DEFINE_float('clip_gradients', 40.0, 'Clip the global norm of the gradients to this value.')
@@ -42,7 +42,9 @@ def main(_):
         'max_story_length': dataset.max_story_length,
         'max_story_char_length': dataset.max_story_char_length,
         'embedding_size': FLAGS.embedding_size,
+        'batch_size_int': FLAGS.batch_size,
         'hidden_units': FLAGS.hidden_units,
+        'token_space': dataset.tokens[' '],
         'learning_rate_init': FLAGS.learning_rate,
         'learning_rate_decay_steps': 10000,
         'learning_rate_decay_rate': 0.5,
