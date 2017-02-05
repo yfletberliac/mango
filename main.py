@@ -1,5 +1,5 @@
 """
-This module runs the TensorFlow instances, train and evaluate the model.
+This module runs TensorFlow instances to train and evaluate the model.
 """
 from __future__ import absolute_import
 from __future__ import print_function
