@@ -1,4 +1,4 @@
-## Question Answering NLP with character-level RNN
+# Question Answering NLP with character-level RNN
 
 The model will first be challenged with the bAbI dataset from FAIR.
 
