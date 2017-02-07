@@ -23,6 +23,7 @@ class Data(object):
         self.max_story_length = metadata['max_story_length']
         self.max_query_length = metadata['max_query_length']
         self.max_story_char_length = metadata['max_story_char_length']
+        self.max_story_word_length = metadata['max_story_word_length']
         self.dataset_size = metadata['dataset_size']
         self.vocab_size = metadata['vocab_size']
         self.tokens = metadata['tokens']
