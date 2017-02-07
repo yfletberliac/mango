@@ -20,14 +20,14 @@ tf.app.flags.DEFINE_integer('seed', 14, 'Random seed.')
 tf.app.flags.DEFINE_string('dataset_path', 'datasets/processed/qa1_single-supporting-fact_1k.json', 'Dataset path.')
 tf.app.flags.DEFINE_string('model_dir', 'logs/', 'Model directory.')
 tf.app.flags.DEFINE_integer('examples_per_epoch', 1000, 'Number of examples per epoch.')
-tf.app.flags.DEFINE_integer('batch_size', 16, 'Batch size.')
+tf.app.flags.DEFINE_integer('batch_size', 20, 'Batch size.')
 tf.app.flags.DEFINE_integer('num_epochs', 200, 'Number of training epochs.')
 tf.app.flags.DEFINE_integer('embedding_size', 100, 'Embedding size.')
-tf.app.flags.DEFINE_integer('hidden_units', 100, 'GRU hidden units.')
+tf.app.flags.DEFINE_integer('hidden_units', 1000, 'GRU hidden units.')
 tf.app.flags.DEFINE_float('learning_rate', 1e-2, 'Base learning rate.')
 tf.app.flags.DEFINE_float('clip_gradients', 40.0, 'Clip the global norm of the gradients to this value.')
 tf.app.flags.DEFINE_integer('early_stopping_rounds', 1000, 'Number of epochs before early stopping.')
-tf.app.flags.DEFINE_boolean('debug', True, 'Debug mode to enable more summaries and numerical checks.')
+tf.app.flags.DEFINE_boolean('debug', False, 'Debug mode to enable more summaries and numerical checks.')
 
 
 def main(_):
@@ -95,8 +95,7 @@ def main(_):
         train_monitors=validation_monitors,
         local_eval_frequency=1)
 
-    # experiment.train_and_evaluate()
-    experiment.train()
+    experiment.train_and_evaluate()
 
 if __name__ == '__main__':
     tf.app.run()

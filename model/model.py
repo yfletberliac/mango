@@ -55,33 +55,40 @@ def model_fn(features, targets, mode, params, scope=None):
                                              sequence_length=story_length,
                                              initial_state=initial_state_1)
 
-
             ##GOOD##
             aa = tf.gather_nd(outputs_1, indices_word)
             #########
 
-            zero_padding = tf.zeros([batch_size_int, max_story_word_length, embedding_size], dtype=aa.dtype)
+            input_rnn2 = []
+            length = 0
+            zero_padding = tf.zeros([batch_size, max_story_word_length, embedding_size], dtype=aa.dtype)
 
             for i in xrange(batch_size_int):
-                tf.add(zero_padding[i],tf.strided_slice(aa, [i * word_length[i], 0], [(i + 1) * word_length[i + 1], 0],
-                                                   [1, 1]))
+                length_padding = max_story_word_length - word_length[i] + 1
+                input_rnn2.append(tf.add(zero_padding[i], tf.concat(0, [tf.strided_slice(aa, [length, 0],
+                                                                           [length + word_length[i]-1, 100],
+                                                                           [1, 1]), tf.zeros([length_padding, embedding_size], dtype=aa.dtype)])))
+                length += word_length[i]
+
+            input_rnn2 = tf.pack(input_rnn2)
+
 
         with tf.variable_scope('cell_2'):
-            outputs_2, _ = tf.nn.dynamic_rnn(cell_2, zero_padding,
-                                             sequence_length=word_length,
-                                             initial_state=initial_state_2)
+            outputs_2, last_state_2 = tf.nn.dynamic_rnn(cell_2, input_rnn2,
+                                                        sequence_length=word_length,
+                                                        initial_state=initial_state_2)
 
             # TODO find a way to extract the sentence indices
-            bb = tf.gather_nd(outputs_2, indices_sentence)
-            bb = tf.reshape(bb, [batch_size_int, -1, embedding_size]) # wrong: need to change it
+            # bb = tf.gather_nd(outputs_2, indices_sentence)
+            # bb = tf.reshape(bb, [batch_size_int, -1, embedding_size]) # wrong: need to change it
 
-        with tf.variable_scope('cell_3'):
-            outputs_3, last_state_3 = tf.nn.dynamic_rnn(cell_3, bb,
-                                                        initial_state=initial_state_3)
+        # with tf.variable_scope('cell_3'):
+        #     outputs_3, last_state_3 = tf.nn.dynamic_rnn(cell_3, bb,
+        #                                                 initial_state=initial_state_3)
 
         # Output
         # TODO make RNN for Output - "transfer learning from the encoder?"
-        output = get_output(last_state_3,
+        output = get_output(last_state_2,
                             vocab_size=vocab_size,
                             initializer=normal_initializer
                             )
