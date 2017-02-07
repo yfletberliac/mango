@@ -103,14 +103,24 @@ def tokenize_stories(stories, token_to_id):
     return story_ids
 
 
-def get_max_story_char_length(story):
+def get_max_story_char_length(stories):
     char_total_length = []
-    for story, _, _ in story:
+    for story, _, _ in stories:
         char_length = []
         for sentence in story:
             char_length.append(len(sentence))
         char_total_length.append(sum(char_length))
     return max(char_total_length)
+
+
+def get_max_story_word_length(stories, token_to_id):
+    word_total_length = []
+    for story, _, _ in stories:
+        word_length = []
+        for sentence in story:
+            word_length.append(sentence.count(token_to_id[" "])+1)
+        word_total_length.append(sum(word_length))
+    return max(word_total_length)
 
 
 def pad_stories(stories, max_story_char_length, max_query_length):
@@ -143,7 +153,6 @@ def save_dataset(stories, path):
     """
     writer = tf.python_io.TFRecordWriter(path)
     for story, query, answer in stories:
-
         features = tf.train.Features(feature={
             'story': int64_features(story),
             'query': int64_features(query),
@@ -227,6 +236,7 @@ def main():
         max_story_length = max([len(story) for story, _, _ in stories_token_all])
         max_query_length = max([len(query) for _, query, _ in stories_token_all])
         max_story_char_length = get_max_story_char_length(stories_token_all)
+        max_story_word_length = get_max_story_word_length(stories_token_all, token_to_id)
         vocab_size = len(token_to_id)
 
         with open(metadata_path, 'w') as f:
@@ -237,6 +247,7 @@ def main():
                 'max_story_length': max_story_length,
                 'max_query_length': max_query_length,
                 'max_story_char_length': max_story_char_length,
+                'max_story_word_length': max_story_word_length,
                 'vocab_size': vocab_size,
                 'tokens': token_to_id,
                 'datasets': {
