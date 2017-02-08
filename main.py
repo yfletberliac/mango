@@ -16,14 +16,14 @@ tf.logging.set_verbosity(tf.logging.INFO)
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_integer('seed', 14, 'Random seed.')
+tf.app.flags.DEFINE_integer('seed', 67, 'Random seed.')
 tf.app.flags.DEFINE_string('dataset_path', 'datasets/processed/qa1_single-supporting-fact_1k.json', 'Dataset path.')
 tf.app.flags.DEFINE_string('model_dir', 'logs/', 'Model directory.')
 tf.app.flags.DEFINE_integer('examples_per_epoch', 1000, 'Number of examples per epoch.')
-tf.app.flags.DEFINE_integer('batch_size', 20, 'Batch size.')
+tf.app.flags.DEFINE_integer('batch_size', 40, 'Batch size.')
 tf.app.flags.DEFINE_integer('num_epochs', 200, 'Number of training epochs.')
 tf.app.flags.DEFINE_integer('embedding_size', 100, 'Embedding size.')
-tf.app.flags.DEFINE_integer('hidden_units', 1000, 'GRU hidden units.')
+tf.app.flags.DEFINE_integer('hidden_units', 100, 'GRU hidden units.')
 tf.app.flags.DEFINE_float('learning_rate', 1e-2, 'Base learning rate.')
 tf.app.flags.DEFINE_float('clip_gradients', 40.0, 'Clip the global norm of the gradients to this value.')
 tf.app.flags.DEFINE_integer('early_stopping_rounds', 1000, 'Number of epochs before early stopping.')
@@ -56,7 +56,7 @@ def main(_):
 
     config = tf.contrib.learn.RunConfig(
         tf_random_seed=FLAGS.seed,
-        save_summary_steps=20,
+        save_summary_steps=120,
         save_checkpoints_secs=120,
         keep_checkpoint_max=5,
         keep_checkpoint_every_n_hours=1,
@@ -90,7 +90,6 @@ def main(_):
         eval_input_fn,
         train_steps=None,
         eval_steps=None,
-        min_eval_frequency=1,
         eval_metrics=validation_metrics,
         train_monitors=validation_monitors,
         local_eval_frequency=1)
