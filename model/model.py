@@ -14,6 +14,7 @@ def model_fn(features, targets, mode, params, scope=None):
     vocab_size = params['vocab_size']
     max_story_char_length = params['max_story_char_length']
     max_story_word_length = params['max_story_word_length']
+    max_story_length = params['max_story_length']
     token_space = params['token_space']
     token_sentence = params['token_sentence']
     hidden_units = params['hidden_units']
@@ -46,7 +47,7 @@ def model_fn(features, targets, mode, params, scope=None):
 
         # Recurrence
         char_length = get_story_char_length(story_embedding)
-        word_length = get_story_word_length(story, token_space, vocab_size, embedding_size)
+        word_length = get_story_word_length(story, token_space, token_sentence, vocab_size, embedding_size)
         sentence_length = get_story_sentence_length(story, token_sentence, vocab_size, embedding_size)
 
         # TODO remove non-linearities between layers
@@ -81,21 +82,38 @@ def model_fn(features, targets, mode, params, scope=None):
             input_rnn2 = tf.pack(input_rnn2)
 
         with tf.variable_scope('cell_2'):
-            _, last_state_2 = tf.nn.dynamic_rnn(cell_2, input_rnn2,
-                                                sequence_length=word_length,
-                                                initial_state=initial_state_2)
+            outputs_2, _ = tf.nn.dynamic_rnn(cell_2, input_rnn2,
+                                                        sequence_length=word_length,
+                                                        initial_state=initial_state_2)
+
+            indices_sentence = get_aaa(story, token_sentence, indices_word)
 
             # TODO find a way to extract the sentence indices
-            # bb = tf.gather_nd(outputs_2, indices_sentence)
-            # bb = tf.reshape(bb, [batch_size_int, -1, embedding_size]) # wrong: need to change it
+            outputs_2_masked = tf.gather_nd(tf.reshape(outputs_2, [-1, embedding_size]), indices_sentence)
 
-        # with tf.variable_scope('cell_3'):
-        #     outputs_3, last_state_3 = tf.nn.dynamic_rnn(cell_3, bb,
-        #                                                 initial_state=initial_state_3)
+            input_rnn3 = []
+            length = 0
+            zero_padding = tf.zeros([batch_size, max_story_length, embedding_size], dtype=outputs_2_masked.dtype)
+            for i in xrange(batch_size_int):
+                length_padding = max_story_length - sentence_length[i] + 1
+                input_rnn3.append(tf.add(zero_padding[i], tf.concat(0, [tf.strided_slice(outputs_2_masked, [length, 0],
+                                                                                         [length + sentence_length[
+                                                                                             i] - 1,
+                                                                                          100],
+                                                                                         [1, 1]),
+                                                                        tf.zeros([length_padding, embedding_size],
+                                                                                 dtype=outputs_2_masked.dtype)])))
+                length += sentence_length[i]
+
+            input_rnn3 = tf.pack(input_rnn3)
+
+        with tf.variable_scope('cell_3'):
+            outputs_3, last_state_3 = tf.nn.dynamic_rnn(cell_3, input_rnn3,
+                                                        initial_state=initial_state_3)
 
         # Output
         # TODO make RNN for Output - "transfer learning from the encoder?"
-        output = get_output(last_state_2, encoded_query,
+        output = get_output(last_state_3, encoded_query,
                             vocab_size=vocab_size,
                             initializer=normal_initializer
                             )
@@ -135,13 +153,13 @@ def get_input_encoding(embedding, initializer=None, scope=None):
         return encoded_input
 
 
-def get_story_word_length(story, token, vocab_size, embedding_size, scope=None):
+def get_story_word_length(story, token_word, token_sentence, vocab_size, embedding_size, scope=None):
     """
     Find the word length of a sentence.
     """
     with tf.variable_scope(scope, 'WordLength'):
         embedding_params = tf.get_variable('embedding_params', [vocab_size, embedding_size])
-        embedding_mask = tf.constant([1 if i == token else 0 for i in range(vocab_size)],
+        embedding_mask = tf.constant([1 if i == token_word or i == token_sentence else 0 for i in range(vocab_size)],
                                      dtype=tf.float32,
                                      shape=[vocab_size, 1])
         embedding_params_masked = embedding_params * embedding_mask
@@ -184,6 +202,15 @@ def get_sentence_indices(story, token_sentence, scope=None):
     with tf.variable_scope(scope, 'SentenceIndices'):
         dots = tf.constant(token_sentence, dtype=tf.int64)
         where = tf.equal(tf.squeeze(story, [1]), dots)
+        indices = tf.cast(tf.where(where), tf.int32)
+        return indices
+
+
+def get_aaa(story, token_sentence, indices_word, scope=None):
+    with tf.variable_scope(scope, 'Sentence_Indices'):
+        gather = tf.gather_nd(tf.squeeze(story, [1]), indices_word)
+        dots = tf.constant(token_sentence, dtype=tf.int64)
+        where = tf.equal(gather, dots)
         indices = tf.cast(tf.where(where), tf.int32)
         return indices
 
