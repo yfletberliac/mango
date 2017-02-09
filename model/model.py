@@ -156,7 +156,7 @@ def get_input_encoding(embedding, initializer=None, scope=None):
 
 def get_story_word_length(story, token_word, token_sentence, vocab_size, embedding_size, scope=None):
     """
-    Find the word length of a sentence.
+    Find the word length of a story.
     """
     with tf.variable_scope(scope, 'WordLength'):
         embedding_params = tf.get_variable('embedding_params', [vocab_size, embedding_size])
@@ -190,9 +190,9 @@ def get_story_sentence_length(story, token, vocab_size, embedding_size, scope=No
 
 def get_story_char_length(sequence, scope=None):
     """
-    Find the char length of a sentence that has been padded with zeros.
+    Find the char length of a story.
     """
-    with tf.variable_scope(scope, 'SentenceLength'):
+    with tf.variable_scope(scope, 'CharLength'):
         used = tf.sign(tf.reduce_max(tf.abs(sequence), reduction_indices=[-1]))
         tmp = tf.cast(tf.reduce_sum(used, reduction_indices=[-1]), tf.int32)
         length = tf.reduce_max(tmp, reduction_indices=[-1])
