@@ -44,7 +44,7 @@ def model_fn(features, targets, mode, params, scope=None):
         indices_word = tf.concat(0, [indices_word, indices_sentence])  # get all the words
 
         embedded_input = tf.squeeze(story_embedding, [1])
-        encoded_query = tf.squeeze(get_input_encoding(query_embedding, ones_initializer, 'QueryEncoding'), [1])
+        encoded_query = get_positional_encoding(query_embedding, ones_initializer, 'QueryEncoding')
 
         # Recurrence
         char_length = get_story_char_length(story_embedding)
@@ -114,7 +114,7 @@ def model_fn(features, targets, mode, params, scope=None):
 
         # Output
         # TODO make RNN for Output - "transfer learning from the encoder?"
-        output = get_output(last_state_3, encoded_query,
+        output = get_output(outputs_3, encoded_query,
                             vocab_size=vocab_size,
                             initializer=normal_initializer
                             )
@@ -142,7 +142,7 @@ def model_fn(features, targets, mode, params, scope=None):
         return prediction, loss, train_op
 
 
-def get_input_encoding(embedding, initializer=None, scope=None):
+def get_positional_encoding(embedding, initializer=None, scope=None):
     """
     Implementation of a Position Encoding. This mask allows
     the ordering of words in a sentence to affect the encoding.
@@ -226,23 +226,24 @@ def get_space_indices(story, token_space, scope=None):
 
 def get_output(last_state, encoded_query, vocab_size, activation=tf.nn.relu, initializer=None, scope=None):
     with tf.variable_scope(scope, 'Output', initializer=initializer):
-        _, embedding_size = last_state.get_shape().as_list()
+        _, _, embedding_size = last_state.get_shape().as_list()
 
-        # Use the encoded_query to attend over memories (last_state of last dynamic_rnn)
-        attention = tf.reduce_sum(last_state * encoded_query, reduction_indices=[1])
+        # Use the encoded_query to attend over time steps (outputs of the last dynamic_rnn)
+        attention = tf.reduce_sum(last_state * encoded_query, reduction_indices=[-1])
 
         # Subtract max for numerical stability (softmax is shift invariant)
         attention_max = tf.reduce_max(attention, reduction_indices=[-1], keep_dims=True)
         attention = tf.nn.softmax(attention - attention_max)
-        attention = tf.expand_dims(attention, 1)
+        attention = tf.expand_dims(attention, 2)
 
-        # Weight memories by attention vectors
-        u = last_state * attention
+        # Weight time steps by attention vectors
+        u = tf.reduce_sum(last_state * attention, reduction_indices=[1])
 
         R = tf.get_variable('R', [embedding_size, vocab_size])
         H = tf.get_variable('H', [embedding_size, embedding_size])
 
-        y = tf.matmul(activation(encoded_query + tf.matmul(u, H)), R)
+        q = tf.squeeze(encoded_query, squeeze_dims=[1])
+        y = tf.matmul(activation(q + tf.matmul(u, H)), R)
         return y
 
 
