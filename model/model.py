@@ -38,8 +38,8 @@ def model_fn(features, targets, mode, params, scope=None):
         story_embedding = tf.nn.embedding_lookup(embedding_params_masked, story)  # [? * 1 * 311 * embedding_size]
         query_embedding = tf.nn.embedding_lookup(embedding_params_masked, query)
 
-        indices_word = get_word_indices(story, token_space)  # index(words) # TODO add the dots for the missing words
-        indices_sentence = get_sentence_indices(story, token_sentence)  # index(sentences)
+        indices_word = get_word_indices(story, token_space)
+        indices_sentence = get_sentence_indices(story, token_sentence) # get all the sentences
         indices_word = tf.concat(0, [indices_word, indices_sentence])  # get all the words
 
         embedded_input = tf.squeeze(story_embedding, [1])
@@ -83,12 +83,11 @@ def model_fn(features, targets, mode, params, scope=None):
 
         with tf.variable_scope('cell_2'):
             outputs_2, _ = tf.nn.dynamic_rnn(cell_2, input_rnn2,
-                                                        sequence_length=word_length,
-                                                        initial_state=initial_state_2)
+                                             sequence_length=word_length,
+                                             initial_state=initial_state_2)
 
             indices_sentence = get_aaa(story, token_sentence, indices_word)
 
-            # TODO find a way to extract the sentence indices
             outputs_2_masked = tf.gather_nd(tf.reshape(outputs_2, [-1, embedding_size]), indices_sentence)
 
             input_rnn3 = []
@@ -109,6 +108,7 @@ def model_fn(features, targets, mode, params, scope=None):
 
         with tf.variable_scope('cell_3'):
             outputs_3, last_state_3 = tf.nn.dynamic_rnn(cell_3, input_rnn3,
+                                                        sequence_length=sentence_length,
                                                         initial_state=initial_state_3)
 
         # Output
@@ -172,7 +172,7 @@ def get_story_word_length(story, token_word, token_sentence, vocab_size, embeddi
 
 def get_story_sentence_length(story, token, vocab_size, embedding_size, scope=None):
     """
-    Find the word length of a sentence.
+    Find the sentence length of a story.
     """
     with tf.variable_scope(scope, 'SentenceLength'):
         embedding_params = tf.get_variable('embedding_params', [vocab_size, embedding_size])
