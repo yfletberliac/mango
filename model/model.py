@@ -35,11 +35,12 @@ def model_fn(features, targets, mode, params, scope=None):
                                      dtype=tf.float32,
                                      shape=[vocab_size, 1])
         embedding_params_masked = embedding_params * embedding_mask  # [vocab_size * embedding_size]
-        story_embedding = tf.nn.embedding_lookup(embedding_params_masked, story)  # [? * 1 * max_story_char_length * embedding_size]
+        story_embedding = tf.nn.embedding_lookup(embedding_params_masked, story)  # [? * 1 * max_story_char_length *
+        # embedding_size]
         query_embedding = tf.nn.embedding_lookup(embedding_params_masked, query)
 
-        indices_word = get_word_indices(story, token_space)
-        indices_sentence = get_sentence_indices(story, token_sentence) # get all the sentences
+        indices_word = get_space_indices(story, token_space)
+        indices_sentence = get_dot_indices(story, token_sentence)  # get all the sentences
         indices_word = tf.concat(0, [indices_word, indices_sentence])  # get all the words
 
         embedded_input = tf.squeeze(story_embedding, [1])
@@ -86,7 +87,7 @@ def model_fn(features, targets, mode, params, scope=None):
                                              sequence_length=word_length,
                                              initial_state=initial_state_2)
 
-            indices_sentence = get_aaa(story, token_sentence, indices_word)
+            indices_sentence = get_sentence_indices(story, token_sentence, indices_word)
 
             outputs_2_masked = tf.gather_nd(tf.reshape(outputs_2, [-1, embedding_size]), indices_sentence)
 
@@ -198,16 +199,16 @@ def get_story_char_length(sequence, scope=None):
         return length
 
 
-def get_sentence_indices(story, token_sentence, scope=None):
-    with tf.variable_scope(scope, 'SentenceIndices'):
+def get_dot_indices(story, token_sentence, scope=None):
+    with tf.variable_scope(scope, 'DotIndices'):
         dots = tf.constant(token_sentence, dtype=tf.int64)
         where = tf.equal(tf.squeeze(story, [1]), dots)
         indices = tf.cast(tf.where(where), tf.int32)
         return indices
 
 
-def get_aaa(story, token_sentence, indices_word, scope=None):
-    with tf.variable_scope(scope, 'Sentence_Indices'):
+def get_sentence_indices(story, token_sentence, indices_word, scope=None):
+    with tf.variable_scope(scope, 'SentenceIndices'):
         gather = tf.gather_nd(tf.squeeze(story, [1]), indices_word)
         dots = tf.constant(token_sentence, dtype=tf.int64)
         where = tf.equal(gather, dots)
@@ -215,8 +216,8 @@ def get_aaa(story, token_sentence, indices_word, scope=None):
         return indices
 
 
-def get_word_indices(story, token_space, scope=None):
-    with tf.variable_scope(scope, 'WordIndices'):
+def get_space_indices(story, token_space, scope=None):
+    with tf.variable_scope(scope, 'SpaceIndices'):
         spaces = tf.constant(token_space, dtype=tf.int64)
         where = tf.equal(tf.squeeze(story, [1]), spaces)
         indices = tf.cast(tf.where(where), tf.int32)
