@@ -17,7 +17,7 @@ def model_fn(features, targets, mode, params, scope=None):
     max_story_length = params['max_story_length']
     token_space = params['token_space']
     token_sentence = params['token_sentence']
-    hidden_units = params['hidden_units']
+    hidden_size = params['hidden_size']
     debug = params['debug']
 
     story = features['story']  # [? * 1 * max_story_char_length]
@@ -30,14 +30,16 @@ def model_fn(features, targets, mode, params, scope=None):
 
     with tf.variable_scope(scope, 'Mango', initializer=normal_initializer):
         # Input
-        embedding_params = tf.get_variable('embedding_params', [vocab_size, embedding_size])
+        embedding_params_story = tf.get_variable('embedding_params_story', [vocab_size, embedding_size])
+        embedding_params_query = tf.get_variable('embedding_params_query', [vocab_size, hidden_size])
         embedding_mask = tf.constant([0 if i == 0 else 1 for i in range(vocab_size)],
                                      dtype=tf.float32,
                                      shape=[vocab_size, 1])
-        embedding_params_masked = embedding_params * embedding_mask  # [vocab_size * embedding_size]
-        story_embedding = tf.nn.embedding_lookup(embedding_params_masked, story)  # [? * 1 * max_story_char_length *
+        embedding_params_masked_story = embedding_params_story * embedding_mask  # [vocab_size * embedding_size]
+        embedding_params_masked_query = embedding_params_query * embedding_mask  # [vocab_size * hidden_size]
+        story_embedding = tf.nn.embedding_lookup(embedding_params_masked_story, story)  # [? * 1 * max_story_char_length *
         # embedding_size]
-        query_embedding = tf.nn.embedding_lookup(embedding_params_masked, query)
+        query_embedding = tf.nn.embedding_lookup(embedding_params_masked_query, query)
 
         indices_word = get_space_indices(story, token_space)
         indices_sentence = get_dot_indices(story, token_sentence)  # get all the sentences
@@ -52,9 +54,9 @@ def model_fn(features, targets, mode, params, scope=None):
         sentence_length = get_story_sentence_length(story, token_sentence, vocab_size, embedding_size)
 
         # TODO remove non-linearities between layers
-        cell_1 = tf.nn.rnn_cell.GRUCell(hidden_units)
-        cell_2 = tf.nn.rnn_cell.GRUCell(hidden_units)
-        cell_3 = tf.nn.rnn_cell.GRUCell(hidden_units)
+        cell_1 = tf.nn.rnn_cell.GRUCell(hidden_size)
+        cell_2 = tf.nn.rnn_cell.GRUCell(hidden_size)
+        cell_3 = tf.nn.rnn_cell.GRUCell(hidden_size)
         initial_state_1 = cell_1.zero_state(batch_size, tf.float32)
         initial_state_2 = cell_2.zero_state(batch_size, tf.float32)
         initial_state_3 = cell_3.zero_state(batch_size, tf.float32)
@@ -68,15 +70,15 @@ def model_fn(features, targets, mode, params, scope=None):
 
             input_rnn2 = []
             length = 0
-            zero_padding = tf.zeros([batch_size, max_story_word_length, embedding_size], dtype=outputs_1_masked.dtype)
+            zero_padding = tf.zeros([batch_size, max_story_word_length, hidden_size], dtype=outputs_1_masked.dtype)
 
             for i in xrange(batch_size_int):
                 length_padding = max_story_word_length - word_length[i] + 1
                 input_rnn2.append(tf.add(zero_padding[i], tf.concat(0, [tf.strided_slice(outputs_1_masked, [length, 0],
                                                                                          [length + word_length[i] - 1,
-                                                                                          100],
+                                                                                          hidden_size],
                                                                                          [1, 1]),
-                                                                        tf.zeros([length_padding, embedding_size],
+                                                                        tf.zeros([length_padding, hidden_size],
                                                                                  dtype=outputs_1_masked.dtype)])))
                 length += word_length[i]
 
@@ -89,19 +91,19 @@ def model_fn(features, targets, mode, params, scope=None):
 
             indices_sentence = get_sentence_indices(story, token_sentence, indices_word)
 
-            outputs_2_masked = tf.gather_nd(tf.reshape(outputs_2, [-1, embedding_size]), indices_sentence)
+            outputs_2_masked = tf.gather_nd(tf.reshape(outputs_2, [-1, hidden_size]), indices_sentence)
 
             input_rnn3 = []
             length = 0
-            zero_padding = tf.zeros([batch_size, max_story_length, embedding_size], dtype=outputs_2_masked.dtype)
+            zero_padding = tf.zeros([batch_size, max_story_length, hidden_size], dtype=outputs_2_masked.dtype)
             for i in xrange(batch_size_int):
                 length_padding = max_story_length - sentence_length[i] + 1
                 input_rnn3.append(tf.add(zero_padding[i], tf.concat(0, [tf.strided_slice(outputs_2_masked, [length, 0],
                                                                                          [length + sentence_length[
                                                                                              i] - 1,
-                                                                                          100],
+                                                                                          hidden_size],
                                                                                          [1, 1]),
-                                                                        tf.zeros([length_padding, embedding_size],
+                                                                        tf.zeros([length_padding, hidden_size],
                                                                                  dtype=outputs_2_masked.dtype)])))
                 length += sentence_length[i]
 

@@ -23,7 +23,7 @@ tf.app.flags.DEFINE_integer('examples_per_epoch', 1000, 'Number of examples per 
 tf.app.flags.DEFINE_integer('batch_size', 40, 'Batch size.')
 tf.app.flags.DEFINE_integer('num_epochs', 200, 'Number of training epochs.')
 tf.app.flags.DEFINE_integer('embedding_size', 100, 'Embedding size.')
-tf.app.flags.DEFINE_integer('hidden_units', 100, 'GRU hidden units.')
+tf.app.flags.DEFINE_integer('hidden_size', 500, 'GRU hidden size.')
 tf.app.flags.DEFINE_float('learning_rate', 1e-2, 'Base learning rate.')
 tf.app.flags.DEFINE_float('clip_gradients', 40.0, 'Clip the global norm of the gradients to this value.')
 tf.app.flags.DEFINE_integer('early_stopping_rounds', 1000, 'Number of epochs before early stopping.')
@@ -44,7 +44,7 @@ def main(_):
         'max_story_word_length': dataset.max_story_word_length,
         'embedding_size': FLAGS.embedding_size,
         'batch_size_int': FLAGS.batch_size,
-        'hidden_units': FLAGS.hidden_units,
+        'hidden_size': FLAGS.hidden_size,
         'token_space': dataset.tokens[' '],
         'token_sentence': dataset.tokens['.'],
         'learning_rate_init': FLAGS.learning_rate,
