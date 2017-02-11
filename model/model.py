@@ -83,6 +83,7 @@ def model_fn(features, targets, mode, params, scope=None):
         # TODO make RNN for Output - "transfer learning from the encoder?"
         output = get_output(outputs_2,
                             vocab_size=vocab_size_word,
+                            batch_size=batch_size_int,
                             initializer=normal_initializer
                             )
         prediction = tf.argmax(output, 2)
@@ -162,12 +163,12 @@ def get_space_indices(story, token_space, scope=None):
         return indices
 
 
-def get_output(output, vocab_size, activation=tf.nn.relu, initializer=None, scope=None):
+def get_output(output, vocab_size, batch_size, activation=tf.nn.relu, initializer=None, scope=None):
     with tf.variable_scope(scope, 'Output', initializer=initializer):
         _, _, embedding_size = output.get_shape().as_list()
 
-        R = tf.get_variable('R', [40, embedding_size, vocab_size])
-        H = tf.get_variable('H', [40, embedding_size, embedding_size])
+        R = tf.get_variable('R', [batch_size, embedding_size, vocab_size])
+        H = tf.get_variable('H', [batch_size, embedding_size, embedding_size])
 
         y = tf.matmul(activation(tf.matmul(output, H)), R)
         return y
