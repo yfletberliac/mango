@@ -19,14 +19,15 @@ class Data(object):
         with open(dataset_path) as f:
             metadata = json.load(f)
 
-        self.max_sentence_length = metadata['max_sentence_length']
+        self.dataset_size = metadata['dataset_size']
+        self.max_sentence_char_length = metadata['max_sentence_char_length']
         self.max_story_length = metadata['max_story_length']
-        self.max_query_length = metadata['max_query_length']
         self.max_story_char_length = metadata['max_story_char_length']
         self.max_story_word_length = metadata['max_story_word_length']
-        self.dataset_size = metadata['dataset_size']
-        self.vocab_size = metadata['vocab_size']
-        self.tokens = metadata['tokens']
+        self.vocab_size_char = metadata['vocab_size_char']
+        self.vocab_size_word = metadata['vocab_size_word']
+        self.tokens_char = metadata['tokens_char']
+        self.tokens_word = metadata['tokens_word']
         self.datasets = metadata['datasets']
 
     @property
@@ -36,9 +37,8 @@ class Data(object):
     def get_input_fn(self, name, num_epochs, shuffle):
         def input_fn():
             features = {
-                "story": tf.FixedLenFeature([1, self.max_story_char_length], dtype=tf.int64),
-                "query": tf.FixedLenFeature([1, self.max_query_length], dtype=tf.int64),
-                "answer": tf.FixedLenFeature([], dtype=tf.int64),
+                "story_char": tf.FixedLenFeature([1, self.max_story_char_length], dtype=tf.int64),
+                "story_word": tf.FixedLenFeature([self.max_story_word_length], dtype=tf.int64),
             }
 
             dataset_path = os.path.join(self.dataset_dir, self.datasets[name])
@@ -48,10 +48,9 @@ class Data(object):
                                                                    randomize_input=shuffle,
                                                                    num_epochs=num_epochs)
 
-            story = features['story']
-            query = features['query']
-            answer = features['answer']
+            story_char = features['story_char']
+            story_word = features['story_word']
 
-            return {'story': story, 'query': query}, answer
+            return {'story_char': story_char}, story_word
 
         return input_fn
