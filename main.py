@@ -20,10 +20,10 @@ tf.app.flags.DEFINE_integer('seed', 67, 'Random seed.')
 tf.app.flags.DEFINE_string('dataset_path', 'datasets/processed/qa1_single-supporting-fact_1k.json', 'Dataset path.')
 tf.app.flags.DEFINE_string('model_dir', 'logs/', 'Model directory.')
 tf.app.flags.DEFINE_integer('examples_per_epoch', 1000, 'Number of examples per epoch.')
-tf.app.flags.DEFINE_integer('batch_size', 100, 'Batch size.')
-tf.app.flags.DEFINE_integer('num_epochs', 400, 'Number of training epochs.')
+tf.app.flags.DEFINE_integer('batch_size', 40, 'Batch size.')
+tf.app.flags.DEFINE_integer('num_epochs', 500, 'Number of training epochs.')
 tf.app.flags.DEFINE_integer('embedding_size', 100, 'Embedding size.')
-tf.app.flags.DEFINE_integer('hidden_size', 700, 'GRU hidden size.')
+tf.app.flags.DEFINE_integer('hidden_size', 500, 'GRU hidden size.')
 tf.app.flags.DEFINE_float('learning_rate', 5e-3, 'Base learning rate.')
 tf.app.flags.DEFINE_float('clip_gradients', 40.0, 'Clip the global norm of the gradients to this value.')
 tf.app.flags.DEFINE_integer('early_stopping_rounds', 100, 'Number of epochs before early stopping.')
@@ -49,7 +49,7 @@ def main(_):
         'token_sentence': dataset.tokens_char['.'],
         'learning_rate_init': FLAGS.learning_rate,
         'learning_rate_decay_steps': 1200,
-        'learning_rate_decay_rate': 0.1,
+        'learning_rate_decay_rate': 0.5,
         'clip_gradients': FLAGS.clip_gradients,
         'debug': FLAGS.debug,
     }
