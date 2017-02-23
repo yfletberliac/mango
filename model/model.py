@@ -34,33 +34,35 @@ def model_fn(features, targets, mode, params, scope=None):
         embedding_params_masked_story = embedding_params_story * embedding_mask  # [vocab_size * embedding_size]
         story_embedding = tf.nn.embedding_lookup(embedding_params_masked_story, story)  # [? * 1 *
         # max_story_char_length * embedding_size]
-        embedded_input = tf.squeeze(story_embedding, [1])
+        embedded_input = tf.squeeze(story_embedding, [1])  # [? * max_story_char_length * embedding_size]
 
         ## Get the word and sentence indices
         indices_word = get_space_indices(story, token_space)
         indices_sentence = get_dot_indices(story, token_sentence)  # get all the sentences
-        indices_word = tf.concat(0, [indices_word, indices_sentence])  # get all the words
+        indices_word = tf.concat([indices_word, indices_sentence], 0)  # get all the words
 
         ## Get the number of characters and words for each story
         char_length = get_story_char_length(story_embedding)
         word_length = get_story_word_length(story, token_space, token_sentence, vocab_size_char, embedding_size)
 
         ## RECURRENCE # TODO remove non-linearities between layers
-        ## Define the cells
-        cell_1 = tf.nn.rnn_cell.GRUCell(hidden_size)
-        cell_2 = tf.nn.rnn_cell.GRUCell(hidden_size)
+        ## Define the cell
+        cell = tf.contrib.rnn.BasicLSTMCell(hidden_size)
+        cell = tf.contrib.rnn.DropoutWrapper(cell=cell, output_keep_prob=0.5)  # doesn't help
+        cell = tf.contrib.rnn.MultiRNNCell(cells=[cell] * 4, state_is_tuple=True)  # doesn't help
         ## Initial states of the cells
-        initial_state_1 = cell_1.zero_state(batch_size, tf.float32)
-        initial_state_2 = cell_2.zero_state(batch_size, tf.float32)
+        initial_state = cell.zero_state(batch_size, tf.float32)
 
         ## RECURRENCE - 1st layer
         with tf.variable_scope('cell_1'):
             ## Run 1st layer iterations
-            outputs_1, _ = tf.nn.dynamic_rnn(cell_1, embedded_input,  # [? * max_story_char_length * embedding_size]
+            outputs_1, _ = tf.nn.dynamic_rnn(cell, embedded_input,
                                              sequence_length=char_length,
-                                             initial_state=initial_state_1)
+                                             initial_state=initial_state)
+
+            outputs_1 = tf.concat(outputs_1, 2)
             ## Extract needed time steps (corresponding to the end of words [indices_word])
-            outputs_1_masked = tf.gather_nd(outputs_1, indices_word) # [len(indices_word) * embedding_size]
+            outputs_1_masked = tf.gather_nd(outputs_1, indices_word)  # [len(indices_word) * embedding_size]
 
             ## Reshape back to [? * max_story_word_length * embedding_size]
             input_rnn2 = []
@@ -69,21 +71,21 @@ def model_fn(features, targets, mode, params, scope=None):
 
             for i in xrange(batch_size_int):
                 length_padding = max_story_word_length - word_length[i] + 1
-                input_rnn2.append(tf.add(zero_padding[i], tf.concat(0, [tf.strided_slice(outputs_1_masked, [length, 0],
-                                                                                         [length + word_length[i] - 1,
-                                                                                          hidden_size],
-                                                                                         [1, 1]),
-                                                                        tf.zeros([length_padding, hidden_size],
-                                                                                 dtype=outputs_1_masked.dtype)])))
+                input_rnn2.append(tf.add(zero_padding[i], tf.concat([tf.strided_slice(outputs_1_masked, [length, 0],
+                                                                                      [length + word_length[i] - 1,
+                                                                                       hidden_size],
+                                                                                      [1, 1]),
+                                                                     tf.zeros([length_padding, hidden_size],
+                                                                              dtype=outputs_1_masked.dtype)], 0)))
                 length += word_length[i]
 
-            input_rnn2 = tf.pack(input_rnn2)
+            input_rnn2 = tf.stack(input_rnn2)
 
         ## RECURRENCE - 2nd layer
         with tf.variable_scope('cell_2'):
-            outputs_2, _ = tf.nn.dynamic_rnn(cell_2, input_rnn2,
+            outputs_2, _ = tf.nn.dynamic_rnn(cell, input_rnn2,
                                              sequence_length=word_length,
-                                             initial_state=initial_state_2)
+                                             initial_state=initial_state)
 
         # OUTPUT
         # TODO make RNN for Output - "transfer learning from the encoder?"
@@ -95,7 +97,7 @@ def model_fn(features, targets, mode, params, scope=None):
         prediction = tf.argmax(output, 2)
 
         ## LOSS
-        loss = get_loss(output, targets, vocab_size_word, mode)
+        loss = get_loss(output, targets, vocab_size_word, word_length, mode)
         ## OPTIMIZATION
         train_op = training_optimizer(loss, params, mode)
 
@@ -181,7 +183,7 @@ def get_output(output, vocab_size, batch_size, activation=tf.nn.relu, initialize
         return y
 
 
-def get_loss(output, labels, vocab_size, mode):
+def get_loss(output, labels, vocab_size, word_length, mode):
     """
     Function to compute the loss.
     """
@@ -193,9 +195,22 @@ def get_loss(output, labels, vocab_size, mode):
     #     print(output.get_shape().ndims)
 
     output = tf.reshape(output, [-1, vocab_size])
-    labels = tf.reshape(labels, [-1])
+    labels_flat = tf.reshape(labels, [-1])
 
-    return tf.contrib.losses.sparse_softmax_cross_entropy(output, labels)
+    losses = tf.losses.sparse_softmax_cross_entropy(logits=output, labels=labels_flat)
+
+    # Mask the losses
+    mask = tf.sign(tf.to_float(labels_flat))
+    masked_losses = mask * losses
+
+    # Bring back to [B, T] shape
+    masked_losses = tf.reshape(masked_losses, tf.shape(labels))
+
+    # Calculate mean loss
+    mean_loss_by_example = tf.reduce_sum(masked_losses, reduction_indices=1) / tf.to_float(word_length)
+    mean_loss = tf.reduce_mean(mean_loss_by_example)
+
+    return mean_loss
 
 
 def training_optimizer(loss, params, mode):

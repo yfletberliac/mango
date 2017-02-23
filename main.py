@@ -18,23 +18,22 @@ FLAGS = tf.app.flags.FLAGS
 
 ## Hyper-parameters
 tf.app.flags.DEFINE_integer('seed', 67, 'Random seed.')
-tf.app.flags.DEFINE_string('dataset_path', 'datasets/processed/qa1_single-supporting-fact_1k.json', 'Dataset path.')
+tf.app.flags.DEFINE_string('dataset', 'datasets/processed/qa1_single-supporting-fact_1k.json', 'Dataset path.')
 tf.app.flags.DEFINE_string('model_dir', 'logs/', 'Model directory.')
-tf.app.flags.DEFINE_integer('examples_per_epoch', 1000, 'Number of examples per epoch.')
 tf.app.flags.DEFINE_integer('batch_size', 40, 'Batch size.')
 tf.app.flags.DEFINE_integer('num_epochs', 500, 'Number of training epochs.')
 tf.app.flags.DEFINE_integer('embedding_size', 100, 'Embedding size.')
-tf.app.flags.DEFINE_integer('hidden_size', 500, 'GRU hidden size.')
+tf.app.flags.DEFINE_float('hidden_size', 500, 'GRU hidden size.')
 tf.app.flags.DEFINE_float('learning_rate', 5e-3, 'Base learning rate.')
 tf.app.flags.DEFINE_float('clip_gradients', 40.0, 'Clip the global norm of the gradients to this value.')
 tf.app.flags.DEFINE_integer('early_stopping_rounds', 100, 'Number of epochs before early stopping.')
 tf.app.flags.DEFINE_boolean('debug', False, 'Debug mode to enable more summaries and numerical checks.')
+print(FLAGS.dataset)
 
 
 def main(_):
-
     ## Let TensorFlow take care of the batches
-    dataset = Data(FLAGS.dataset_path, FLAGS.batch_size, FLAGS.examples_per_epoch)
+    dataset = Data(FLAGS.dataset, FLAGS.batch_size)
     train_input_fn = dataset.get_input_fn('train', num_epochs=FLAGS.num_epochs, shuffle=True)
     eval_input_fn = dataset.get_input_fn('test', num_epochs=1, shuffle=False)
 
@@ -51,7 +50,7 @@ def main(_):
         'token_space': dataset.tokens_char[' '],
         'token_sentence': dataset.tokens_char['.'],
         'learning_rate_init': FLAGS.learning_rate,
-        'learning_rate_decay_steps': 1200,
+        'learning_rate_decay_steps': 4000,
         'learning_rate_decay_rate': 0.5,
         'clip_gradients': FLAGS.clip_gradients,
         'debug': FLAGS.debug,
@@ -66,7 +65,7 @@ def main(_):
         keep_checkpoint_every_n_hours=1,
         log_device_placement=True)
 
-    dataset_name = os.path.splitext(os.path.basename(FLAGS.dataset_path))[0]
+    dataset_name = os.path.splitext(os.path.basename(FLAGS.dataset))[0]
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     model_dir = os.path.join(FLAGS.model_dir, dataset_name, str(timestamp))
@@ -82,7 +81,7 @@ def main(_):
     # print("Predictions: {}".format(str(y)))
 
     validation_metrics = {
-        "accuracy": tf.contrib.learn.metric_spec.MetricSpec(tf.contrib.metrics.streaming_accuracy)
+        "accuracy": tf.contrib.learn.MetricSpec(tf.contrib.metrics.streaming_accuracy)
     }
 
     validation_monitors = [tf.contrib.learn.monitors.ValidationMonitor(
@@ -100,10 +99,10 @@ def main(_):
         train_steps=None,
         eval_steps=None,
         eval_metrics=validation_metrics,
-        train_monitors=validation_monitors,
-        local_eval_frequency=1)
+        train_monitors=validation_monitors)
 
     experiment.train_and_evaluate()
+
 
 if __name__ == '__main__':
     tf.app.run()

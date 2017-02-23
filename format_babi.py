@@ -22,7 +22,7 @@ tf.app.flags.DEFINE_boolean('include_10k', False, 'Whether to use 10k or 1k exam
 SPLIT_RE = re.compile('(\W+)?')
 
 PAD_TOKEN = '_PAD'
-PAD_ID = 0
+PAD_ID =0
 
 
 def tokenize_char(sentence):

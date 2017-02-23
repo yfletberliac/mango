@@ -11,10 +11,9 @@ import tensorflow as tf
 
 
 class Data(object):
-    def __init__(self, dataset_path, batch_size, examples_per_epoch):
+    def __init__(self, dataset_path, batch_size):
         self.dataset_dir = os.path.dirname(dataset_path)
         self.batch_size = batch_size
-        self.examples_per_epoch = examples_per_epoch
 
         with open(dataset_path) as f:
             metadata = json.load(f)
@@ -32,7 +31,7 @@ class Data(object):
 
     @property
     def steps_per_epoch(self):
-        return self.examples_per_epoch // self.batch_size + 1
+        return self.dataset_size // self.batch_size + 1
 
     def get_input_fn(self, name, num_epochs, shuffle):
         def input_fn():
