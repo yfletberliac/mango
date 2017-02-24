@@ -25,18 +25,18 @@ PAD_TOKEN = '_PAD'
 PAD_ID = 0
 
 
-def tokenize_char(sentence):
-    """
-    Tokenize a string by splitting on characters.
-    """
-    return list(sentence.lower())
-
-
 def tokenize(sentence):
     """
     Tokenize a string by splitting on non-word characters and stripping whitespace.
     """
     return [token.strip().lower() for token in re.split(SPLIT_RE, sentence) if token.strip()]
+
+
+def tokenize_char(sentence):
+    """
+    Tokenize a string by splitting on characters.
+    """
+    return list(sentence.lower())
 
 
 def parse_stories(lines, only_supporting=False):
@@ -54,7 +54,7 @@ def parse_stories(lines, only_supporting=False):
             story = []
         if '\t' in line:
             query, answer, supporting = line.split('\t')
-            query = tokenize(query)
+            query = tokenize_char(query)
             if only_supporting:
                 # Only select the related substory
                 supporting = map(int, supporting.split())
@@ -70,35 +70,40 @@ def parse_stories(lines, only_supporting=False):
     return stories
 
 
-def truncate_stories(stories, max_length):
-    stories_truncated = []
-    for story, query, answer in stories:
-        story_truncated = story[-max_length:]
-        stories_truncated.append((story_truncated, query, answer))
-    return stories_truncated
-
-
-def get_tokenizer(stories):
+def get_tokenizer_char(stories):
     """
     Recover unique tokens as a vocab and map the tokens to ids.
     """
     tokens_all = []
     for story, query, answer in stories:
-        tokens_all.extend([token for sentence in story for token in sentence] + query + [answer])
+        tokens_all.extend([token for sentence in story for token in sentence])
+        tokens_all.extend([token for sentence in query for token in sentence])
     vocab = [PAD_TOKEN] + sorted(set(tokens_all))
     token_to_id = {token: i for i, token in enumerate(vocab)}
     return token_to_id
 
 
-def tokenize_stories(stories, token_to_id):
+def get_tokenizer_word(stories):
+    """
+    Recover unique tokens as a vocab and map the tokens to ids.
+    """
+    tokens_all = []
+    for story, query, answer in stories:
+        tokens_all.extend([answer])
+    vocab = sorted(set(tokens_all))
+    token_to_id = {token: i for i, token in enumerate(vocab)}
+    return token_to_id
+
+
+def tokenize_stories(stories, token_to_id_char, token_to_id_word):
     """
     Convert all tokens into their unique ids.
     """
     story_ids = []
     for story, query, answer in stories:
-        story = [[token_to_id[token] for token in sentence] for sentence in story]
-        query = [token_to_id[token] for token in query]
-        answer = token_to_id[answer]
+        story = [[token_to_id_char[token] for token in sentence] for sentence in story]
+        query = [token_to_id_char[token] for token in query]
+        answer = token_to_id_word[answer]
         story_ids.append((story, query, answer))
     return story_ids
 
@@ -207,14 +212,6 @@ def main():
             metadata_path = os.path.join(FLAGS.target_dir, filename + '_1k.json')
             dataset_size = 1000
 
-        # From the entity networks paper:
-        # > Copying previous works (Sukhbaatar et al., 2015; Xiong et al., 2016), the capacity of the memory
-        # > was limited to the most recent 70 sentences, except for task 3 which was limited to 130 sentences.
-        if filename == 'qa3_three-supporting-facts':
-            truncated_story_length = 130
-        else:
-            truncated_story_length = 70
-
         tar = tarfile.open(os.path.join(FLAGS.source_dir, 'babi_tasks_data_1_20_v1.2.tar.gz'))
 
         f_train = tar.extractfile(stories_path_train)
@@ -223,33 +220,37 @@ def main():
         stories_train = parse_stories(f_train.readlines())
         stories_test = parse_stories(f_test.readlines())
 
-        stories_train = truncate_stories(stories_train, truncated_story_length)
-        stories_test = truncate_stories(stories_test, truncated_story_length)
+        token_to_id_char = get_tokenizer_char(stories_train + stories_test)
+        token_to_id_word = get_tokenizer_word(stories_train + stories_test)
 
-        token_to_id = get_tokenizer(stories_train + stories_test)
+        print(token_to_id_char)
+        print(token_to_id_word)
 
-        stories_token_train = tokenize_stories(stories_train, token_to_id)
-        stories_token_test = tokenize_stories(stories_test, token_to_id)
+        stories_token_train = tokenize_stories(stories_train, token_to_id_char, token_to_id_word)
+        stories_token_test = tokenize_stories(stories_test, token_to_id_char, token_to_id_word)
         stories_token_all = stories_token_train + stories_token_test
 
         max_sentence_length = max([len(sentence) for story, _, _ in stories_token_all for sentence in story])
         max_story_length = max([len(story) for story, _, _ in stories_token_all])
         max_query_length = max([len(query) for _, query, _ in stories_token_all])
         max_story_char_length = get_max_story_char_length(stories_token_all)
-        max_story_word_length = get_max_story_word_length(stories_token_all, token_to_id)
-        vocab_size = len(token_to_id)
+        max_story_word_length = get_max_story_word_length(stories_token_all, token_to_id_char)
+        vocab_size_char = len(token_to_id_char)
+        vocab_size_word = len(token_to_id_word)
 
         with open(metadata_path, 'w') as f:
             metadata = {
                 'dataset_name': filename,
                 'dataset_size': dataset_size,
-                'max_sentence_length': max_sentence_length,
+                'max_sentence_char_length': max_sentence_length,
                 'max_story_length': max_story_length,
-                'max_query_length': max_query_length,
+                'max_query_char_length': max_query_length,
                 'max_story_char_length': max_story_char_length,
                 'max_story_word_length': max_story_word_length,
-                'vocab_size': vocab_size,
-                'tokens': token_to_id,
+                'vocab_size_char': vocab_size_char,
+                'vocab_size_word': vocab_size_word,
+                'tokens_char': token_to_id_char,
+                'tokens_word': token_to_id_word,
                 'datasets': {
                     'train': os.path.basename(dataset_path_train),
                     'test': os.path.basename(dataset_path_test),
