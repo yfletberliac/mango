@@ -20,14 +20,14 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_integer('seed', 67, 'Random seed.')
 tf.app.flags.DEFINE_string('dataset_path', 'datasets/processed/qa1_single-supporting-fact_1k.json', 'Dataset path.')
 tf.app.flags.DEFINE_string('model_dir', 'logs_master/', 'Model directory.')
-tf.app.flags.DEFINE_integer('batch_size', 40, 'Batch size.')
+tf.app.flags.DEFINE_integer('batch_size', 20, 'Batch size.')
 tf.app.flags.DEFINE_integer('num_epochs', 500, 'Number of training epochs.')
 tf.app.flags.DEFINE_integer('embedding_size', 100, 'Embedding size.')
 tf.app.flags.DEFINE_integer('hidden_size', 500, 'GRU hidden size.')
 tf.app.flags.DEFINE_float('learning_rate', 5e-2, 'Base learning rate.')
 tf.app.flags.DEFINE_float('clip_gradients', 40.0, 'Clip the global norm of the gradients to this value.')
 tf.app.flags.DEFINE_integer('early_stopping_rounds', 200, 'Number of epochs before early stopping.')
-tf.app.flags.DEFINE_boolean('debug', False, 'Debug mode to enable more summaries and numerical checks.')
+tf.app.flags.DEFINE_boolean('debug', True, 'Debug mode to enable more summaries and numerical checks.')
 
 
 def main(_):
@@ -59,7 +59,7 @@ def main(_):
     ## Configurations for the Estimator
     config = tf.contrib.learn.RunConfig(
         tf_random_seed=FLAGS.seed,
-        save_summary_steps=500,
+        save_summary_steps=200,
         save_checkpoints_secs=300,
         keep_checkpoint_max=5,
         keep_checkpoint_every_n_hours=1,

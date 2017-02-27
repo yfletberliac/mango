@@ -11,8 +11,8 @@ import tensorflow as tf
 def model_fn(features, targets, mode, params, scope=None):
     embedding_size = params['embedding_size']
     batch_size_int = params['batch_size_int']
-    vocab_size = params['vocab_size']
-    max_story_char_length = params['max_story_char_length']
+    vocab_size_char = params['vocab_size_char']
+    vocab_size_word = params['vocab_size_word']
     max_story_word_length = params['max_story_word_length']
     max_story_length = params['max_story_length']
     token_space = params['token_space']
@@ -29,65 +29,70 @@ def model_fn(features, targets, mode, params, scope=None):
     ones_initializer = tf.constant_initializer(1.0)
 
     with tf.variable_scope(scope, 'Mango', initializer=normal_initializer):
-        # Input
-        embedding_params_story = tf.get_variable('embedding_params_story', [vocab_size, embedding_size])
-        embedding_params_query = tf.get_variable('embedding_params_query', [vocab_size, hidden_size])
-        embedding_mask = tf.constant([0 if i == 0 else 1 for i in range(vocab_size)],
+        ## INPUT embedding
+        embedding_params_story = tf.get_variable('embedding_params_story', [vocab_size_char, embedding_size])
+        embedding_params_query = tf.get_variable('embedding_params_query', [vocab_size_char, hidden_size])
+        embedding_mask = tf.constant([0 if i == 0 else 1 for i in range(vocab_size_char)],
                                      dtype=tf.float32,
-                                     shape=[vocab_size, 1])
+                                     shape=[vocab_size_char, 1])
         embedding_params_masked_story = embedding_params_story * embedding_mask  # [vocab_size * embedding_size]
         embedding_params_masked_query = embedding_params_query * embedding_mask  # [vocab_size * hidden_size]
-        story_embedding = tf.nn.embedding_lookup(embedding_params_masked_story, story)  # [? * 1 * max_story_char_length *
-        # embedding_size]
+        story_embedding = tf.nn.embedding_lookup(embedding_params_masked_story, story)  # [? * 1 *
+        # max_story_char_length * embedding_size]
         query_embedding = tf.nn.embedding_lookup(embedding_params_masked_query, query)
 
-        indices_word = get_space_indices(story, token_space)
-        indices_sentence = get_dot_indices(story, token_sentence)  # get all the sentences
-        indices_word = tf.concat(0, [indices_word, indices_sentence])  # get all the words
-
-        embedded_input = tf.squeeze(story_embedding, [1])
+        embedded_story = tf.squeeze(story_embedding, [1])
         encoded_query = get_positional_encoding(query_embedding, ones_initializer, 'QueryEncoding')
 
-        # Recurrence
+        ## Get the word and sentence indices
+        indices_word = get_space_indices(story, token_space)
+        indices_sentence = get_dot_indices(story, token_sentence)  # get all the sentences
+        indices_word = tf.concat([indices_word, indices_sentence], 0)  # get all the words
+
+        ## Get the number of characters and words for each story
         char_length = get_story_char_length(story_embedding)
-        word_length = get_story_word_length(story, token_space, token_sentence, vocab_size, embedding_size)
-        sentence_length = get_story_sentence_length(story, token_sentence, vocab_size, embedding_size)
+        word_length = get_story_word_length(story, token_space, token_sentence, vocab_size_char, embedding_size)
+        sentence_length = get_story_sentence_length(story, token_sentence, vocab_size_char, embedding_size)
 
-        # TODO remove non-linearities between layers
-        cell_1 = tf.nn.rnn_cell.GRUCell(hidden_size)
-        cell_2 = tf.nn.rnn_cell.GRUCell(hidden_size)
-        cell_3 = tf.nn.rnn_cell.GRUCell(hidden_size)
-        initial_state_1 = cell_1.zero_state(batch_size, tf.float32)
-        initial_state_2 = cell_2.zero_state(batch_size, tf.float32)
-        initial_state_3 = cell_3.zero_state(batch_size, tf.float32)
+        ## RECURRENCE # TODO remove non-linearities between layers
+        ## Define the cells
+        cell = tf.contrib.rnn.GRUCell(hidden_size)
+        cell = tf.contrib.rnn.MultiRNNCell(cells=[cell] * 4)
+        ## Initial states of the cells
+        initial_state = cell.zero_state(batch_size, tf.float32)
 
+        ## RECURRENCE - 1st layer
         with tf.variable_scope('cell_1'):
-            outputs_1, _ = tf.nn.dynamic_rnn(cell_1, embedded_input,  # [? * max_story_char_length * embedding_size]
+            ## Run 1st layer iterations
+            outputs_1, _ = tf.nn.dynamic_rnn(cell, embedded_story,  # [? * max_story_char_length * hidden_size]
                                              sequence_length=char_length,
-                                             initial_state=initial_state_1)
+                                             initial_state=initial_state)
 
+            ## Extract needed time steps (corresponding to the end of words [indices_word])
             outputs_1_masked = tf.gather_nd(outputs_1, indices_word)
 
+            ## Reshape back to [? * max_story_word_length * hidden_size]
             input_rnn2 = []
             length = 0
             zero_padding = tf.zeros([batch_size, max_story_word_length, hidden_size], dtype=outputs_1_masked.dtype)
 
             for i in xrange(batch_size_int):
                 length_padding = max_story_word_length - word_length[i] + 1
-                input_rnn2.append(tf.add(zero_padding[i], tf.concat(0, [tf.strided_slice(outputs_1_masked, [length, 0],
-                                                                                         [length + word_length[i] - 1,
-                                                                                          hidden_size],
-                                                                                         [1, 1]),
-                                                                        tf.zeros([length_padding, hidden_size],
-                                                                                 dtype=outputs_1_masked.dtype)])))
+                input_rnn2.append(tf.add(zero_padding[i], tf.concat([tf.strided_slice(outputs_1_masked, [length, 0],
+                                                                                      [length + word_length[i] - 1,
+                                                                                       hidden_size],
+                                                                                      [1, 1]),
+                                                                     tf.zeros([length_padding, hidden_size],
+                                                                              dtype=outputs_1_masked.dtype)], 0)))
                 length += word_length[i]
 
-            input_rnn2 = tf.pack(input_rnn2)
+            input_rnn2 = tf.stack(input_rnn2)
 
+        ## RECURRENCE - 2nd layer
         with tf.variable_scope('cell_2'):
-            outputs_2, _ = tf.nn.dynamic_rnn(cell_2, input_rnn2,
+            outputs_2, _ = tf.nn.dynamic_rnn(cell, input_rnn2,
                                              sequence_length=word_length,
-                                             initial_state=initial_state_2)
+                                             initial_state=initial_state)
 
             indices_sentence = get_sentence_indices(story, token_sentence, indices_word)
 
@@ -98,46 +103,51 @@ def model_fn(features, targets, mode, params, scope=None):
             zero_padding = tf.zeros([batch_size, max_story_length, hidden_size], dtype=outputs_2_masked.dtype)
             for i in xrange(batch_size_int):
                 length_padding = max_story_length - sentence_length[i] + 1
-                input_rnn3.append(tf.add(zero_padding[i], tf.concat(0, [tf.strided_slice(outputs_2_masked, [length, 0],
-                                                                                         [length + sentence_length[
-                                                                                             i] - 1,
-                                                                                          hidden_size],
-                                                                                         [1, 1]),
-                                                                        tf.zeros([length_padding, hidden_size],
-                                                                                 dtype=outputs_2_masked.dtype)])))
+                input_rnn3.append(tf.add(zero_padding[i], tf.concat([tf.strided_slice(outputs_2_masked, [length, 0],
+                                                                                      [length + sentence_length[
+                                                                                          i] - 1,
+                                                                                       hidden_size],
+                                                                                      [1, 1]),
+                                                                     tf.zeros([length_padding, hidden_size],
+                                                                              dtype=outputs_2_masked.dtype)], 0)))
                 length += sentence_length[i]
 
-            input_rnn3 = tf.pack(input_rnn3)
+            input_rnn3 = tf.stack(input_rnn3)
 
+        ## RECURRENCE - 3rd layer
         with tf.variable_scope('cell_3'):
-            outputs_3, last_state_3 = tf.nn.dynamic_rnn(cell_3, input_rnn3,
+            outputs_3, last_state_3 = tf.nn.dynamic_rnn(cell, input_rnn3,
                                                         sequence_length=sentence_length,
-                                                        initial_state=initial_state_3)
+                                                        initial_state=initial_state)
 
-        # Output
+        # OUTPUT
         # TODO make RNN for Output - "transfer learning from the encoder?"
-        output = get_output(outputs_3, encoded_query,
-                            vocab_size=vocab_size,
-                            initializer=normal_initializer
-                            )
+        output, attention = get_output(outputs_3, encoded_query,
+                                       vocab_size=vocab_size_word,
+                                       initializer=normal_initializer
+                                       )
         prediction = tf.argmax(output, 1)
 
-        # Training
+        ## LOSS
         loss = get_loss(output, targets, mode)
+        ## OPTIMIZATION
         train_op = training_optimizer(loss, params, mode)
 
         if debug:
-            tf.contrib.layers.summarize_tensor(offset, 'offset')
-            tf.contrib.layers.summarize_tensor(word_flattened_indices, 'word_flattened_indices')
-            tf.contrib.layers.summarize_tensor(embedded_input, 'embedded_input')
-            tf.contrib.layers.summarize_tensor(flattened_output_1, 'flattened_output_1')
-            tf.contrib.layers.summarize_tensor(selected_rows_word, 'selected_rows_word')
-            tf.contrib.layers.summarize_tensor(input_rnn2, 'input_rnn2')
-            tf.contrib.layers.summarize_tensor(indices_word, 'indices_word')
+            tf.contrib.layers.summarize_tensor(embedded_story, 'embedded_story')
+            tf.contrib.layers.summarize_tensor(encoded_query, 'encoded_query')
+
+            tf.contrib.layers.summarize_tensor(outputs_1, 'outputs_1')
+            tf.contrib.layers.summarize_tensor(outputs_2, 'outputs_2')
+            tf.contrib.layers.summarize_tensor(outputs_3, 'outputs_3')
+
             tf.contrib.layers.summarize_tensor(char_length, 'char_length')
-            tf.contrib.layers.summarize_tensor(last_state_3, 'last_state')
+            tf.contrib.layers.summarize_tensor(word_length, 'word_length')
+            tf.contrib.layers.summarize_tensor(sentence_length, 'sentence_length')
+
             tf.contrib.layers.summarize_tensor(output, 'output')
-            tf.contrib.layers.summarize_variables()
+            tf.contrib.layers.summarize_tensor(targets, 'targets')
+            tf.contrib.layers.summarize_tensor(attention, 'attention')
 
             tf.add_check_numerics_ops()
 
@@ -154,6 +164,17 @@ def get_positional_encoding(embedding, initializer=None, scope=None):
         positional_mask = tf.get_variable('positional_mask', [max_sentence_length, 1])
         encoded_input = tf.reduce_sum(embedding * positional_mask, reduction_indices=[2])
         return encoded_input
+
+
+def get_story_char_length(sequence, scope=None):
+    """
+    Find the char length of a story.
+    """
+    with tf.variable_scope(scope, 'CharLength'):
+        used = tf.sign(tf.reduce_max(tf.abs(sequence), reduction_indices=[-1]))
+        tmp = tf.cast(tf.reduce_sum(used, reduction_indices=[-1]), tf.int32)
+        length = tf.reduce_max(tmp, reduction_indices=[-1])
+        return length
 
 
 def get_story_word_length(story, token_word, token_sentence, vocab_size, embedding_size, scope=None):
@@ -190,17 +211,6 @@ def get_story_sentence_length(story, token, vocab_size, embedding_size, scope=No
         return length
 
 
-def get_story_char_length(sequence, scope=None):
-    """
-    Find the char length of a story.
-    """
-    with tf.variable_scope(scope, 'CharLength'):
-        used = tf.sign(tf.reduce_max(tf.abs(sequence), reduction_indices=[-1]))
-        tmp = tf.cast(tf.reduce_sum(used, reduction_indices=[-1]), tf.int32)
-        length = tf.reduce_max(tmp, reduction_indices=[-1])
-        return length
-
-
 def get_dot_indices(story, token_sentence, scope=None):
     with tf.variable_scope(scope, 'DotIndices'):
         dots = tf.constant(token_sentence, dtype=tf.int64)
@@ -227,8 +237,11 @@ def get_space_indices(story, token_space, scope=None):
 
 
 def get_output(last_state, encoded_query, vocab_size, activation=tf.nn.relu, initializer=None, scope=None):
+    """
+    Output module.
+    """
     with tf.variable_scope(scope, 'Output', initializer=initializer):
-        _, _, embedding_size = last_state.get_shape().as_list()
+        _, _, hidden_size = last_state.get_shape().as_list()
 
         # Use the encoded_query to attend over time steps (outputs of the last dynamic_rnn)
         attention = tf.reduce_sum(last_state * encoded_query, reduction_indices=[-1])
@@ -241,21 +254,27 @@ def get_output(last_state, encoded_query, vocab_size, activation=tf.nn.relu, ini
         # Weight time steps by attention vectors
         u = tf.reduce_sum(last_state * attention, reduction_indices=[1])
 
-        R = tf.get_variable('R', [embedding_size, vocab_size])
-        H = tf.get_variable('H', [embedding_size, embedding_size])
+        R = tf.get_variable('R', [hidden_size, vocab_size])
+        H = tf.get_variable('H', [hidden_size, hidden_size])
 
         q = tf.squeeze(encoded_query, squeeze_dims=[1])
         y = tf.matmul(activation(q + tf.matmul(u, H)), R)
-        return y
+        return y, attention
 
 
 def get_loss(output, labels, mode):
+    """
+    Function to compute the loss.
+    """
     if mode == tf.contrib.learn.ModeKeys.INFER:
         return None
-    return tf.contrib.losses.sparse_softmax_cross_entropy(output, labels)
+    return tf.losses.sparse_softmax_cross_entropy(logits=output, labels=labels)
 
 
 def training_optimizer(loss, params, mode):
+    """
+    Optimization module.
+    """
     if mode != tf.contrib.learn.ModeKeys.TRAIN:
         return None
 

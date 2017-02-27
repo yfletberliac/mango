@@ -11,33 +11,35 @@ import tensorflow as tf
 
 
 class Data(object):
-    def __init__(self, dataset_path, batch_size, examples_per_epoch):
+    def __init__(self, dataset_path, batch_size):
         self.dataset_dir = os.path.dirname(dataset_path)
         self.batch_size = batch_size
-        self.examples_per_epoch = examples_per_epoch
 
         with open(dataset_path) as f:
             metadata = json.load(f)
 
-        self.max_sentence_length = metadata['max_sentence_length']
+        self.dataset_size = metadata['dataset_size']
+        self.max_sentence_char_length = metadata['max_sentence_char_length']
         self.max_story_length = metadata['max_story_length']
-        self.max_query_length = metadata['max_query_length']
+        self.max_query_char_length = metadata['max_query_char_length']
         self.max_story_char_length = metadata['max_story_char_length']
         self.max_story_word_length = metadata['max_story_word_length']
         self.dataset_size = metadata['dataset_size']
-        self.vocab_size = metadata['vocab_size']
-        self.tokens = metadata['tokens']
+        self.vocab_size_char = metadata['vocab_size_char']
+        self.vocab_size_word = metadata['vocab_size_word']
+        self.tokens_char = metadata['tokens_char']
+        self.tokens_word = metadata['tokens_word']
         self.datasets = metadata['datasets']
 
     @property
     def steps_per_epoch(self):
-        return self.examples_per_epoch // self.batch_size + 1
+        return self.dataset_size // self.batch_size + 1
 
     def get_input_fn(self, name, num_epochs, shuffle):
         def input_fn():
             features = {
                 "story": tf.FixedLenFeature([1, self.max_story_char_length], dtype=tf.int64),
-                "query": tf.FixedLenFeature([1, self.max_query_length], dtype=tf.int64),
+                "query": tf.FixedLenFeature([1, self.max_query_char_length], dtype=tf.int64),
                 "answer": tf.FixedLenFeature([], dtype=tf.int64),
             }
 
