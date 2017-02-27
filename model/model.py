@@ -102,17 +102,16 @@ def model_fn(features, targets, mode, params, scope=None):
         train_op = training_optimizer(loss, params, mode)
 
         if debug:
-            tf.contrib.layers.summarize_tensor(offset, 'offset')
-            tf.contrib.layers.summarize_tensor(word_flattened_indices, 'word_flattened_indices')
             tf.contrib.layers.summarize_tensor(embedded_input, 'embedded_input')
-            tf.contrib.layers.summarize_tensor(flattened_output_1, 'flattened_output_1')
-            tf.contrib.layers.summarize_tensor(selected_rows_word, 'selected_rows_word')
-            tf.contrib.layers.summarize_tensor(input_rnn2, 'input_rnn2')
-            tf.contrib.layers.summarize_tensor(indices_word, 'indices_word')
+
+            tf.contrib.layers.summarize_tensor(outputs_1, 'outputs_1')
+            tf.contrib.layers.summarize_tensor(outputs_2, 'outputs_2')
+
             tf.contrib.layers.summarize_tensor(char_length, 'char_length')
-            tf.contrib.layers.summarize_tensor(last_state_3, 'last_state')
+            tf.contrib.layers.summarize_tensor(word_length, 'word_length')
+
             tf.contrib.layers.summarize_tensor(output, 'output')
-            tf.contrib.layers.summarize_variables()
+            tf.contrib.layers.summarize_tensor(targets, 'targets')
 
             tf.add_check_numerics_ops()
 
