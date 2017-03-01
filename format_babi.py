@@ -22,7 +22,7 @@ tf.app.flags.DEFINE_boolean('include_10k', False, 'Whether to use 10k or 1k exam
 SPLIT_RE = re.compile('(\W+)?')
 
 PAD_TOKEN = '_PAD'
-PAD_ID =0
+PAD_ID = 0
 
 
 def tokenize_char(sentence):
@@ -39,7 +39,7 @@ def tokenize_word(sentence):
     return [token.strip().lower() for token in re.split(SPLIT_RE, sentence) if token.strip()]
 
 
-def parse_stories(lines, only_supporting=False):
+def parse_stories(lines):
     """
     Parse the bAbI task format.
     If only_supporting is True, only the sentences that support the answer are kept.

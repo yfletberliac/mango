@@ -47,9 +47,9 @@ def model_fn(features, targets, mode, params, scope=None):
 
         ## RECURRENCE # TODO remove non-linearities between layers
         ## Define the cell
-        cell = tf.contrib.rnn.BasicLSTMCell(hidden_size)
-        cell = tf.contrib.rnn.DropoutWrapper(cell=cell, output_keep_prob=0.5)  # doesn't help
-        cell = tf.contrib.rnn.MultiRNNCell(cells=[cell] * 4, state_is_tuple=True)  # doesn't help
+        cell = tf.contrib.rnn.LSTMCell(num_units=hidden_size, use_peepholes=True, activation=tf.tanh)
+        # cell = tf.contrib.rnn.DropoutWrapper(cell=cell, output_keep_prob=0.5)  # doesn't help
+        # cell = tf.contrib.rnn.MultiRNNCell(cells=[cell] * 4, state_is_tuple=True)  # doesn't help
         ## Initial states of the cells
         initial_state = cell.zero_state(batch_size, tf.float32)
 
