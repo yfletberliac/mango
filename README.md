@@ -10,6 +10,7 @@ The model will first be challenged with the bAbI dataset from FAIR.
   * **/model/model.py** - constructs model_fn that will be fed into the Estimator in main.py
   * **main.py** - runs TensorFlow instances to train and evaluate the model
   * **run.sh** - runs main.py given a dataset and a seed
+  * **rnn.py** - contains the Char2Word block
   
 ### Usage :
 
