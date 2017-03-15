@@ -21,8 +21,10 @@ class Data(object):
         self.dataset_size = metadata['dataset_size']
         self.max_sentence_char_length = metadata['max_sentence_char_length']
         self.max_story_length = metadata['max_story_length']
+        self.max_query_char_length = metadata['max_query_char_length']
         self.max_story_char_length = metadata['max_story_char_length']
         self.max_story_word_length = metadata['max_story_word_length']
+        self.dataset_size = metadata['dataset_size']
         self.vocab_size_char = metadata['vocab_size_char']
         self.vocab_size_word = metadata['vocab_size_word']
         self.tokens_char = metadata['tokens_char']
@@ -36,8 +38,9 @@ class Data(object):
     def get_input_fn(self, name, num_epochs, shuffle):
         def input_fn():
             features = {
-                "story_char": tf.FixedLenFeature([1, self.max_story_char_length], dtype=tf.int64),
-                "story_word": tf.FixedLenFeature([self.max_story_word_length], dtype=tf.int64),
+                "story": tf.FixedLenFeature([1, self.max_story_char_length], dtype=tf.int64),
+                "query": tf.FixedLenFeature([1, self.max_query_char_length], dtype=tf.int64),
+                "answer": tf.FixedLenFeature([], dtype=tf.int64),
             }
 
             dataset_path = os.path.join(self.dataset_dir, self.datasets[name])

@@ -25,18 +25,18 @@ PAD_TOKEN = '_PAD'
 PAD_ID = 0
 
 
+def tokenize(sentence):
+    """
+    Tokenize a string by splitting on non-word characters and stripping whitespace.
+    """
+    return [token.strip().lower() for token in re.split(SPLIT_RE, sentence) if token.strip()]
+
+
 def tokenize_char(sentence):
     """
     Tokenize a string by splitting on characters.
     """
     return list(sentence.lower())
-
-
-def tokenize_word(sentence):
-    """
-    Tokenize a string by splitting on non-word characters and stripping whitespace.
-    """
-    return [token.strip().lower() for token in re.split(SPLIT_RE, sentence) if token.strip()]
 
 
 def parse_stories(lines):
@@ -55,11 +55,17 @@ def parse_stories(lines):
             story_char = []
             story_word = []
         if '\t' in line:
-            substory_char = [x for x in story_char if x]
-            substory_word = [x for x in story_word if x]
-            stories.append((substory_char, substory_word))
-            story_char.append('')
-            story_word.append('')
+            query, answer, supporting = line.split('\t')
+            query = tokenize_char(query)
+            if only_supporting:
+                # Only select the related substory
+                supporting = map(int, supporting.split())
+                substory = [story[i - 1] for i in supporting]
+            else:
+                # Provide all the substories
+                substory = [x for x in story if x]
+            stories.append((substory, query, answer))
+            story.append('')
         else:
             sentence_char = tokenize_char(line)
             sentence_word = tokenize_word(line)
@@ -73,8 +79,9 @@ def get_tokenizer_char(stories):
     Recover unique tokens as a vocab and map the tokens to ids.
     """
     tokens_all = []
-    for story_char, story_word in stories:
-        tokens_all.extend([token for sentence in story_char for token in sentence])
+    for story, query, answer in stories:
+        tokens_all.extend([token for sentence in story for token in sentence])
+        tokens_all.extend([token for sentence in query for token in sentence])
     vocab = [PAD_TOKEN] + sorted(set(tokens_all))
     token_to_id = {token: i for i, token in enumerate(vocab)}
     return token_to_id
@@ -85,9 +92,9 @@ def get_tokenizer_word(stories):
     Recover unique tokens as a vocab and map the tokens to ids.
     """
     tokens_all = []
-    for story_char, story_word in stories:
-        tokens_all.extend([token for sentence in story_word for token in sentence])
-    vocab = [PAD_TOKEN] + sorted(set(tokens_all))
+    for story, query, answer in stories:
+        tokens_all.extend([answer])
+    vocab = sorted(set(tokens_all))
     token_to_id = {token: i for i, token in enumerate(vocab)}
     return token_to_id
 
@@ -97,10 +104,11 @@ def tokenize_stories(stories, token_to_id_char, token_to_id_word):
     Convert all tokens into their unique ids.
     """
     story_ids = []
-    for story_char, story_word in stories:
-        story_char = [[token_to_id_char[token] for token in sentence] for sentence in story_char]
-        story_word = [[token_to_id_word[token] for token in sentence] for sentence in story_word]
-        story_ids.append((story_char, story_word))
+    for story, query, answer in stories:
+        story = [[token_to_id_char[token] for token in sentence] for sentence in story]
+        query = [token_to_id_char[token] for token in query]
+        answer = token_to_id_word[answer]
+        story_ids.append((story, query, answer))
     return story_ids
 
 
@@ -225,7 +233,7 @@ def main():
         max_sentence_length = max([len(sentence) for story, _ in stories_token_all for sentence in story])
         max_story_length = max([len(story) for story, _ in stories_token_all])
         max_story_char_length = get_max_story_char_length(stories_token_all)
-        max_story_word_length = get_max_story_word_length(stories_token_all)
+        max_story_word_length = get_max_story_word_length(stories_token_all, token_to_id_char)
         vocab_size_char = len(token_to_id_char)
         vocab_size_word = len(token_to_id_word)
 
@@ -234,9 +242,10 @@ def main():
                 'dataset_name': filename,
                 'dataset_size': dataset_size,
                 'max_sentence_char_length': max_sentence_length,
+                'max_story_length': max_story_length,
+                'max_query_char_length': max_query_length,
                 'max_story_char_length': max_story_char_length,
                 'max_story_word_length': max_story_word_length,
-                'max_story_length': max_story_length,
                 'vocab_size_char': vocab_size_char,
                 'vocab_size_word': vocab_size_word,
                 'tokens_char': token_to_id_char,
