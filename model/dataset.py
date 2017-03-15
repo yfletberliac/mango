@@ -50,10 +50,9 @@ class Data(object):
                                                                    randomize_input=shuffle,
                                                                    num_epochs=num_epochs)
 
-            story = features['story']
-            query = features['query']
-            answer = features['answer']
+            story_char = features['story_char']
+            story_word = features['story_word']
 
-            return {'story': story, 'query': query}, answer
+            return {'story_char': story_char}, story_word
 
         return input_fn

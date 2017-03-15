@@ -14,19 +14,16 @@ def model_fn(features, targets, mode, params, scope=None):
     vocab_size_char = params['vocab_size_char']
     vocab_size_word = params['vocab_size_word']
     max_story_word_length = params['max_story_word_length']
-    max_story_length = params['max_story_length']
     token_space = params['token_space']
     token_sentence = params['token_sentence']
     hidden_size = params['hidden_size']
     debug = params['debug']
 
-    story = features['story']  # [? * 1 * max_story_char_length]
-    query = features['query']  # [? * 1 * max_query_length]
+    story = features['story_char']  # [? * 1 * max_story_char_length]
 
     batch_size = tf.shape(story)[0]
 
     normal_initializer = tf.random_normal_initializer(stddev=0.1)
-    ones_initializer = tf.constant_initializer(1.0)
 
     with tf.variable_scope(scope, 'Mango', initializer=normal_initializer):
         ## INPUT embedding
@@ -94,9 +91,19 @@ def model_fn(features, targets, mode, params, scope=None):
                                              sequence_length=word_length,
                                              initial_state=initial_state)
 
-            indices_sentence = get_sentence_indices(story, token_sentence, indices_word)
+        ## RECURRENCE - 2nd layer
+        with tf.variable_scope('Word2Word'):
+            # TODO remove non-linearities between layers
+            ## Define the cell
+            cell = tf.contrib.rnn.LSTMCell(num_units=hidden_size, use_peepholes=True, activation=tf.tanh)
+            # cell = tf.contrib.rnn.DropoutWrapper(cell=cell, output_keep_prob=0.5)  # doesn't help
+            # cell = tf.contrib.rnn.MultiRNNCell(cells=[cell] * 4, state_is_tuple=True)  # doesn't help
+            ## Initial states of the cells
+            initial_state = cell.zero_state(batch_size, tf.float32)
 
-            outputs_2_masked = tf.gather_nd(tf.reshape(outputs_2, [-1, hidden_size]), indices_sentence)
+            outputs_2, _ = tf.nn.dynamic_rnn(cell, input_rnn2,
+                                             sequence_length=word_length,
+                                             initial_state=initial_state)
 
             input_rnn3 = []
             length = 0
@@ -193,7 +200,6 @@ def get_story_word_length(story, token_word, token_sentence, vocab_size, embeddi
         length = tf.reduce_max(tmp, reduction_indices=[-1])
         return length
 
-
 def get_story_sentence_length(story, token, vocab_size, embedding_size, scope=None):
     """
     Find the sentence length of a story.
@@ -212,6 +218,9 @@ def get_story_sentence_length(story, token, vocab_size, embedding_size, scope=No
 
 
 def get_dot_indices(story, token_sentence, scope=None):
+    """
+    Find the 'dot' indices in a story.
+    """
     with tf.variable_scope(scope, 'DotIndices'):
         dots = tf.constant(token_sentence, dtype=tf.int64)
         where = tf.equal(tf.squeeze(story, [1]), dots)
@@ -219,22 +228,15 @@ def get_dot_indices(story, token_sentence, scope=None):
         return indices
 
 
-def get_sentence_indices(story, token_sentence, indices_word, scope=None):
-    with tf.variable_scope(scope, 'SentenceIndices'):
-        gather = tf.gather_nd(tf.squeeze(story, [1]), indices_word)
-        dots = tf.constant(token_sentence, dtype=tf.int64)
-        where = tf.equal(gather, dots)
-        indices = tf.cast(tf.where(where), tf.int32)
-        return indices
-
-
 def get_space_indices(story, token_space, scope=None):
+    """
+    Find the 'space' indices in a story.
+    """
     with tf.variable_scope(scope, 'SpaceIndices'):
         spaces = tf.constant(token_space, dtype=tf.int64)
         where = tf.equal(tf.squeeze(story, [1]), spaces)
         indices = tf.cast(tf.where(where), tf.int32)
         return indices
-
 
 def get_output(last_state, encoded_query, vocab_size, activation=tf.nn.relu, initializer=None, scope=None):
     """
@@ -243,16 +245,11 @@ def get_output(last_state, encoded_query, vocab_size, activation=tf.nn.relu, ini
     with tf.variable_scope(scope, 'Output', initializer=initializer):
         _, _, hidden_size = last_state.get_shape().as_list()
 
-        # Use the encoded_query to attend over time steps (outputs of the last dynamic_rnn)
-        attention = tf.reduce_sum(last_state * encoded_query, reduction_indices=[-1])
+        R = tf.get_variable('R', [batch_size, embedding_size, vocab_size])
+        H = tf.get_variable('H', [batch_size, embedding_size, embedding_size])
 
-        # Subtract max for numerical stability (softmax is shift invariant)
-        attention_max = tf.reduce_max(attention, reduction_indices=[-1], keep_dims=True)
-        attention = tf.nn.softmax(attention - attention_max)
-        attention = tf.expand_dims(attention, 2)
-
-        # Weight time steps by attention vectors
-        u = tf.reduce_sum(last_state * attention, reduction_indices=[1])
+        y = tf.matmul(activation(tf.matmul(output, H)), R)
+        return y, tf.argmax(y, 2)
 
         R = tf.get_variable('R', [hidden_size, vocab_size])
         H = tf.get_variable('H', [hidden_size, hidden_size])
@@ -261,6 +258,7 @@ def get_output(last_state, encoded_query, vocab_size, activation=tf.nn.relu, ini
         y = tf.matmul(activation(q + tf.matmul(u, H)), R)
         return y, attention
 
+    losses = tf.losses.sparse_softmax_cross_entropy(logits=output, labels=labels_flat)
 
 def get_loss(output, labels, mode):
     """

@@ -65,10 +65,10 @@ def main(_):
         keep_checkpoint_every_n_hours=1,
         log_device_placement=True)
 
-    dataset_name = os.path.splitext(os.path.basename(FLAGS.dataset_path))[0]
+    dataset_name = os.path.splitext(os.path.basename(FLAGS.dataset))[0]
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-    model_dir = os.path.join(FLAGS.model_dir, dataset_name, str(timestamp))
+    model_dir = os.path.join(FLAGS.model_dir, dataset_name, "2017-03-08_16-48-22")
 
     ## Building the Estimator
     estimator = tf.contrib.learn.Estimator(
@@ -102,6 +102,7 @@ def main(_):
         train_monitors=validation_monitors)
 
     experiment.train_and_evaluate()
+
 
 if __name__ == '__main__':
     tf.app.run()
