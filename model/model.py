@@ -27,34 +27,35 @@ def model_fn(features, targets, mode, params, scope=None):
 
     with tf.variable_scope(scope, 'Mango', initializer=normal_initializer):
         ## INPUT embedding
-        embedding_params_story = tf.get_variable('embedding_params_story', [vocab_size_char, embedding_size])
-        embedding_mask = tf.constant([0 if i == 0 else 1 for i in range(vocab_size_char)],
-                                     dtype=tf.float32,
-                                     shape=[vocab_size_char, 1])
-        embedding_params_masked_story = embedding_params_story * embedding_mask  # [vocab_size * embedding_size]
-        story_embedding = tf.nn.embedding_lookup(embedding_params_masked_story, story)  # [? * 1 *
-        # max_story_char_length * embedding_size]
-        embedded_input = tf.squeeze(story_embedding, [1])  # [? * max_story_char_length * embedding_size]
+        with tf.variable_scope('Input'):
+            embedding_params_story = tf.get_variable('embedding_params_story', [vocab_size_char, embedding_size])
+            embedding_mask = tf.constant([0 if i == 0 else 1 for i in range(vocab_size_char)],
+                                         dtype=tf.float32,
+                                         shape=[vocab_size_char, 1])
+            embedding_params_masked_story = embedding_params_story * embedding_mask  # [vocab_size * embedding_size]
+            story_embedding = tf.nn.embedding_lookup(embedding_params_masked_story, story)  # [? * 1 *
+            # max_story_char_length * embedding_size]
+            embedded_input = tf.squeeze(story_embedding, [1])  # [? * max_story_char_length * embedding_size]
 
-        ## Get the word and sentence indices
-        indices_word = get_space_indices(story, token_space)
-        indices_sentence = get_dot_indices(story, token_sentence)  # get all the sentences
-        indices_word = tf.concat([indices_word, indices_sentence], 0)  # get all the words
+            ## Get the word and sentence indices
+            indices_word = get_space_indices(story, token_space)
+            indices_sentence = get_dot_indices(story, token_sentence)  # get all the sentences
+            indices_word = tf.concat([indices_word, indices_sentence], 0)  # get all the words
 
-        ## Get the number of characters and words for each story
-        char_length = get_story_char_length(story_embedding)
-        word_length = get_story_word_length(story, token_space, token_sentence, vocab_size_char, embedding_size)
-
-        ## RECURRENCE # TODO remove non-linearities between layers
-        ## Define the cell
-        cell = tf.contrib.rnn.LSTMCell(num_units=hidden_size, use_peepholes=True, activation=tf.tanh)
-        # cell = tf.contrib.rnn.DropoutWrapper(cell=cell, output_keep_prob=0.5)  # doesn't help
-        # cell = tf.contrib.rnn.MultiRNNCell(cells=[cell] * 4, state_is_tuple=True)  # doesn't help
-        ## Initial states of the cells
-        initial_state = cell.zero_state(batch_size, tf.float32)
+            ## Get the number of characters and words for each story
+            char_length = get_story_char_length(story_embedding)
+            word_length = get_story_word_length(story, token_space, token_sentence, vocab_size_char, embedding_size)
 
         ## RECURRENCE - 1st layer
-        with tf.variable_scope('cell_1'):
+        with tf.variable_scope('Char2Word'):
+            # TODO remove non-linearities between layers
+            ## Define the cell
+            cell = tf.contrib.rnn.LSTMCell(num_units=hidden_size, use_peepholes=True, activation=tf.tanh)
+            # cell = tf.contrib.rnn.DropoutWrapper(cell=cell, output_keep_prob=0.5)  # doesn't help
+            # cell = tf.contrib.rnn.MultiRNNCell(cells=[cell] * 4, state_is_tuple=True)  # doesn't help
+            ## Initial states of the cells
+            initial_state = cell.zero_state(batch_size, tf.float32)
+
             ## Run 1st layer iterations
             outputs_1, _ = tf.nn.dynamic_rnn(cell, embedded_input,
                                              sequence_length=char_length,
@@ -82,24 +83,31 @@ def model_fn(features, targets, mode, params, scope=None):
             input_rnn2 = tf.stack(input_rnn2)
 
         ## RECURRENCE - 2nd layer
-        with tf.variable_scope('cell_2'):
+        with tf.variable_scope('Word2Word'):
+            # TODO remove non-linearities between layers
+            ## Define the cell
+            cell = tf.contrib.rnn.LSTMCell(num_units=hidden_size, use_peepholes=True, activation=tf.tanh)
+            # cell = tf.contrib.rnn.DropoutWrapper(cell=cell, output_keep_prob=0.5)  # doesn't help
+            # cell = tf.contrib.rnn.MultiRNNCell(cells=[cell] * 4, state_is_tuple=True)  # doesn't help
+            ## Initial states of the cells
+            initial_state = cell.zero_state(batch_size, tf.float32)
+
             outputs_2, _ = tf.nn.dynamic_rnn(cell, input_rnn2,
                                              sequence_length=word_length,
                                              initial_state=initial_state)
 
         # OUTPUT
         # TODO make RNN for Output - "transfer learning from the encoder?"
-        output = get_output(outputs_2,
-                            vocab_size=vocab_size_word,
-                            batch_size=batch_size_int,
-                            initializer=normal_initializer
-                            )
-        prediction = tf.argmax(output, 2)
-
+        output, prediction = get_output(outputs_2,
+                                        vocab_size=vocab_size_word,
+                                        batch_size=batch_size_int,
+                                        initializer=normal_initializer
+                                        )
         ## LOSS
-        loss = get_loss(output, targets, vocab_size_word, word_length, mode)
-        ## OPTIMIZATION
-        train_op = training_optimizer(loss, params, mode)
+        with tf.variable_scope('Loss'):
+            loss = get_loss(output, targets, vocab_size_word, word_length, mode)
+            ## OPTIMIZATION
+            train_op = training_optimizer(loss, params, mode)
 
         if debug:
             tf.contrib.layers.summarize_tensor(embedded_input, 'embedded_input')
@@ -179,7 +187,7 @@ def get_output(output, vocab_size, batch_size, activation=tf.nn.relu, initialize
         H = tf.get_variable('H', [batch_size, embedding_size, embedding_size])
 
         y = tf.matmul(activation(tf.matmul(output, H)), R)
-        return y
+        return y, tf.argmax(y, 2)
 
 
 def get_loss(output, labels, vocab_size, word_length, mode):
