@@ -30,7 +30,7 @@ class Config:
     num_steps_story_word = None
     max_epochs = 4000
     dropout = 1
-    lr = 0.005
+    lr = 0.002
 
 
 class RNN_Model:
@@ -122,8 +122,7 @@ class RNN_Model:
         masked_losses = tf.reshape(masked_losses, tf.shape(self.labels_placeholder))
 
         # Calculate mean loss
-        mean_loss_by_example = tf.reduce_sum(masked_losses, reduction_indices=1)\
-                               / tf.to_float(self.config.num_steps_story_word)
+        mean_loss_by_example = tf.reduce_sum(masked_losses, reduction_indices=1) / tf.to_float(self.Y_length)
         mean_loss = tf.reduce_mean(mean_loss_by_example)
 
         tf.add_to_collection('total_loss', mean_loss)
@@ -139,7 +138,7 @@ class RNN_Model:
           train_op: The Op for training.
         """
         optimizer = tf.train.AdamOptimizer(self.config.lr)
-        train_op = optimizer.minimize(self.calculate_loss)
+        train_op = optimizer.minimize(loss)
 
         return train_op
 
@@ -153,10 +152,11 @@ class RNN_Model:
                    a tensor of shape (batch_size, hidden_size)
         """
         with tf.variable_scope('Char2Word') as scope:
-            self.initial_state0 = tf.zeros([self.config.batch_size, self.config.hidden_size])
             cell0 = tf.contrib.rnn.BasicRNNCell(self.config.hidden_size)
+            cell0 = tf.contrib.rnn.MultiRNNCell(cells=[cell0] * 4)
             cell0 = tf.contrib.rnn.DropoutWrapper(cell0, input_keep_prob=self.dropout_placeholder,
                                                   output_keep_prob=self.dropout_placeholder)
+            self.initial_state0 = cell0.zero_state(self.config.batch_size, tf.float32)
 
             self.outputs0, self.final_state0 = tf.nn.dynamic_rnn(cell0, inputs_story,
                                                                  sequence_length=self.X_length,
@@ -181,10 +181,11 @@ class RNN_Model:
             input_rnn1 = tf.stack(input_rnn1)
 
         with tf.variable_scope('Word2Word') as scope:
-            self.initial_state1 = tf.zeros([self.config.batch_size, self.config.hidden_size])
             cell1 = tf.contrib.rnn.BasicRNNCell(self.config.hidden_size)
+            cell1 = tf.contrib.rnn.MultiRNNCell(cells=[cell1] * 4)
             cell1 = tf.contrib.rnn.DropoutWrapper(cell1, input_keep_prob=self.dropout_placeholder,
                                                   output_keep_prob=self.dropout_placeholder)
+            self.initial_state1 = cell1.zero_state(self.config.batch_size, tf.float32)
 
             self.outputs1, self.final_state1 = tf.nn.dynamic_rnn(cell1, input_rnn1,
                                                                  sequence_length=self.Y_length,
@@ -203,16 +204,12 @@ class RNN_Model:
         batches = [(start, end) for start, end in batches]
         total_correct_examples = 0
         total_processed_examples = 0
-        state0 = self.initial_state0.eval()
-        state1 = self.initial_state1.eval()
         for step, (start, end) in enumerate(batches):
             a = [[y[0]-start, y[1]] for x in Indices_word[start:end] for y in x]
             b = [a[i:i + story_word_maxlen] for i in range(0, len(a), story_word_maxlen)]
 
             feed = {self.input_story_placeholder: input_story[start:end],
                     self.labels_placeholder: input_labels[start:end],
-                    self.initial_state0: state0,
-                    self.initial_state1: state1,
                     self.dropout_placeholder: dp,
                     self.X_length: X_length[start:end],
                     self.Y_length: Y_length[start:end],
@@ -247,16 +244,12 @@ class RNN_Model:
         total_correct_examples = 0
         total_processed_examples = 0
         total_steps = len(batches_train)
-        state0 = self.initial_state0.eval()
-        state1 = self.initial_state1.eval()
         for step, (start, end) in enumerate(batches_train):
             a = [[y[0] - start, y[1]] for x in Indices_word[start:end] for y in x]
             b = [a[i:i + story_word_maxlen] for i in range(0, len(a), story_word_maxlen)]
 
             feed = {self.input_story_placeholder: input_story[start:end],
                     self.labels_placeholder: input_labels[start:end],
-                    self.initial_state0: state0,
-                    self.initial_state1: state1,
                     self.dropout_placeholder: dp,
                     self.X_length: X_length[start:end],
                     self.Y_length: Y_length[start:end],
@@ -278,6 +271,7 @@ class RNN_Model:
         Prediction = []
         Mask = []
         Correct = []
+        Labels = []
         total_correct_examples = 0
         total_processed_examples = 0
         for step, (start, end) in enumerate(batches_val):
@@ -286,8 +280,6 @@ class RNN_Model:
 
             feed = {self.input_story_placeholder: input_story[start:end],
                     self.labels_placeholder: input_labels[start:end],
-                    self.initial_state0: state0,
-                    self.initial_state1: state1,
                     self.dropout_placeholder: 1,
                     self.X_length: X_length[start:end],
                     self.Y_length: Y_length[start:end],
@@ -300,15 +292,16 @@ class RNN_Model:
             Prediction.append(prediction)
             Mask.append(mask)
             Correct.append(correct)
+            Labels.append(input_labels[start:end])
         val_acc = total_correct_examples / float(total_processed_examples)
 
-        return np.mean(total_loss_train), np.mean(total_loss_val), train_acc, val_acc, Prediction, Mask, Correct
+        return np.mean(total_loss_train), np.mean(total_loss_val), train_acc, val_acc, Prediction, Mask, Correct, Labels
 
 
 def tokenize_word(sent):
     """Return the tokens of a sentence including punctuation.
     >> tokenize('Bob dropped the apple. Where is the apple?')
-    ['Bob', 'dropped', 'the', 'apple', '.', 'Where', 'is', 'the', 'apple', '?']
+    ['Bob', 'dropped', 'the', 'apple', 'Bob', 'went', 'to', 'the', 'kitchen']
     """
     return [x.strip() for x in re.split('(\W+)?', sent) if x.strip() and x.strip() != '.']
 
@@ -430,7 +423,6 @@ def pad_sequences(sequences, maxlen=None, dtype='int32', type=None,
     else:
         x = (np.ones((nb_samples, story_word_maxlen) + sample_shape) * value).astype(dtype)
 
-    print(len(x[0]))
     for idx, s in enumerate(sequences):
         if len(s) == 0:
             continue  # empty list was found
@@ -468,7 +460,7 @@ if __name__ == "__main__":
     np.random.seed(1337)  # for reproducibility
     verbose = True
 
-    path = 'babi_tasks_data_1_20_v1.2.tar.gz'
+    path = 'datasets/babi_tasks_data_1_20_v1.2.tar.gz'
     tar = tarfile.open(path)
     tasks_dir = 'tasks_1-20_v1-2/en/'
 
@@ -497,8 +489,6 @@ if __name__ == "__main__":
 
         X, Y, X_length, Y_length, Indices_word, Indices_sentence = vectorize_stories(train, char_idx, word_idx)
         tX, tY, tX_length, tY_length, tIndices_word, tIndices_sentence = vectorize_stories(test, char_idx, word_idx)
-        print(len(Y[0]))
-        print(len(tY[0]))
 
         if verbose:
             print('vocab_char = {}'.format(vocab_char))
@@ -521,14 +511,14 @@ if __name__ == "__main__":
             with tf.Session() as session:
                 session.run(init)
                 timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                model_dir = os.path.join("logs/", task, str(timestamp))
+                model_dir = os.path.join("logs_Char2Word/", task, str(timestamp))
                 writer = tf.summary.FileWriter(model_dir, graph=g)
-                saver.restore(session, "logs/qa1_single-supporting-fact/good/model")
+                # saver.restore(session, "logs_Char2Word/qa1_single-supporting-fact/good/model")
                 for epoch in range(config.max_epochs):
                     if verbose:
                         print('Epoch {}'.format(epoch))
 
-                    train_loss, val_loss, train_acc, val_acc, prediction, mask, correct = model.run_epoch(session,
+                    train_loss, val_loss, train_acc, val_acc, prediction, mask, correct, labels = model.run_epoch(session,
                                                                                (X, Y, X_length, Y_length,
                                                                                 Indices_word, Indices_sentence),
                                                                                train_op=model.train_step)
@@ -547,11 +537,12 @@ if __name__ == "__main__":
                         print('Training loss: {}'.format(train_loss))
                         print('Training acc: {}'.format(train_acc))
                         print('Validation acc: {}'.format(val_acc))
-                        print([idx_word[x] for x in prediction[0][0]])
-                        print(mask[0][0])
-                        print(correct[0][0])
+                        print([idx_word[x] for x in prediction[0][31]])
+                        print([idx_word[x] for x in labels[0][31]])
+                        print(mask[0][31])
+                        print(correct[0][31])
                     if epoch % 20 == 0:
-                        save_path = saver.save(session, os.path.join(model_dir, "model_restore"))
+                        save_path = saver.save(session, os.path.join(model_dir, "model"))
                         print("Model saved in file: %s" % save_path)
 
                 test_acc = model.predict(session, (tX, tY, tX_length, tY_length, tIndices_word, tIndices_sentence))
