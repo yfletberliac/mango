@@ -1,5 +1,5 @@
 """
-Basic RNN for bAbI tasks using Tensorflow
+Basic RNN for bAbI tasks using TensorFlow
 """
 
 import sys
@@ -21,6 +21,10 @@ class Config:
     information parameters. Model objects are passed a Config() object at
     instantiation.
     """
+
+    def __init__(self):
+        pass
+
     batch_size = 32
     embed_size = 100
     hidden_size = 300
@@ -33,7 +37,7 @@ class Config:
     lr = 0.002
 
 
-class RNN_Model:
+class NeuralModel:
     def __init__(self, config):
         self.config = config
         self.add_placeholders()
@@ -90,7 +94,7 @@ class RNN_Model:
         over the vocabulary.
 
         Args:
-          rnn_outputs: List of length num_steps, each of whose elements should be
+          rnn_output: List of length num_steps, each of whose elements should be
                        a tensor of shape (batch_size, embed_size).
         Returns:
           outputs: List of length num_steps, each a tensor of shape
@@ -145,15 +149,15 @@ class RNN_Model:
     def add_model(self, inputs_story):
         """Creates the RNN LM model.
         Args:
-          inputs: List of length num_steps, each of whose elements should be
+          inputs_story: List of length num_steps, each of whose elements should be
                   a tensor of shape (batch_size, embed_size).
         Returns:
           outputs: List of length num_steps, each of whose elements should be
                    a tensor of shape (batch_size, hidden_size)
         """
-        with tf.variable_scope('Char2Word') as scope:
+        with tf.variable_scope('Char2Word'):
             cell0 = tf.contrib.rnn.BasicRNNCell(self.config.hidden_size)
-            cell0 = tf.contrib.rnn.MultiRNNCell(cells=[cell0] * 4)
+            # cell0 = tf.contrib.rnn.MultiRNNCell(cells=[cell0] * 4)
             cell0 = tf.contrib.rnn.DropoutWrapper(cell0, input_keep_prob=self.dropout_placeholder,
                                                   output_keep_prob=self.dropout_placeholder)
             self.initial_state0 = cell0.zero_state(self.config.batch_size, tf.float32)
@@ -162,32 +166,20 @@ class RNN_Model:
                                                                  sequence_length=self.X_length,
                                                                  initial_state=self.initial_state0)
 
-            Indices_word = tf.reshape(self.Indices_word, [-1, 2])
+            indices_word = tf.reshape(self.Indices_word, [-1, 2])
             ## Extract the time steps corresponding to the end of words indices_word
-            outputs_0_masked = tf.gather_nd(self.outputs0, Indices_word)
+            inputs1 = tf.gather_nd(self.outputs0, indices_word)
+            inputs1 = tf.reshape(inputs1, [self.config.batch_size, self.config.num_steps_story_word,
+                                           self.config.hidden_size])
 
-            ## Reshape back to [? * num_steps_story_word * embedding_size]
-            input_rnn1 = []
-            length = 0
-
-            for i in xrange(self.config.batch_size):
-                length_padding = self.config.num_steps_story_word - self.Y_length[i] + 1
-                input_rnn1.append(tf.concat([tf.strided_slice(outputs_0_masked, [length, 0],
-                                                              [length + self.Y_length[i] - 1,
-                                                               self.config.hidden_size]),
-                                             tf.zeros([length_padding, self.config.hidden_size],
-                                                      dtype=outputs_0_masked.dtype)], 0))
-                length += self.Y_length[i]
-            input_rnn1 = tf.stack(input_rnn1)
-
-        with tf.variable_scope('Word2Word') as scope:
+        with tf.variable_scope('Word2Word'):
             cell1 = tf.contrib.rnn.BasicRNNCell(self.config.hidden_size)
-            cell1 = tf.contrib.rnn.MultiRNNCell(cells=[cell1] * 4)
+            # cell1 = tf.contrib.rnn.MultiRNNCell(cells=[cell1] * 4)
             cell1 = tf.contrib.rnn.DropoutWrapper(cell1, input_keep_prob=self.dropout_placeholder,
                                                   output_keep_prob=self.dropout_placeholder)
             self.initial_state1 = cell1.zero_state(self.config.batch_size, tf.float32)
 
-            self.outputs1, self.final_state1 = tf.nn.dynamic_rnn(cell1, input_rnn1,
+            self.outputs1, self.final_state1 = tf.nn.dynamic_rnn(cell1, inputs1,
                                                                  sequence_length=self.Y_length,
                                                                  initial_state=self.initial_state1)
 
@@ -205,7 +197,7 @@ class RNN_Model:
         total_correct_examples = 0
         total_processed_examples = 0
         for step, (start, end) in enumerate(batches):
-            a = [[y[0]-start, y[1]] for x in Indices_word[start:end] for y in x]
+            a = [[y[0] - start, y[1]] for x in Indices_word[start:end] for y in x]
             b = [a[i:i + story_word_maxlen] for i in range(0, len(a), story_word_maxlen)]
 
             feed = {self.input_story_placeholder: input_story[start:end],
@@ -216,7 +208,7 @@ class RNN_Model:
                     self.Indices_word: b}
             total_correct = session.run(self.correct_predictions, feed_dict=feed)
             total_processed_examples += sum(Y_length[start:end])
-            total_correct_examples += total_correct - ((end-start)*story_word_maxlen - sum(Y_length[start:end]))
+            total_correct_examples += total_correct - ((end - start) * story_word_maxlen - sum(Y_length[start:end]))
         acc = total_correct_examples / float(total_processed_examples)
 
         return acc
@@ -258,7 +250,7 @@ class RNN_Model:
                 [self.calculate_loss, self.correct_predictions, self.final_state0, self.final_state1, train_op],
                 feed_dict=feed)
             total_processed_examples += sum(Y_length[start:end])
-            total_correct_examples += total_correct - ((end-start)*story_word_maxlen - sum(Y_length[start:end]))
+            total_correct_examples += total_correct - ((end - start) * story_word_maxlen - sum(Y_length[start:end]))
             total_loss_train.append(loss_train)
             if verbose and step % verbose == 0:
                 sys.stdout.write('\r{} / {} : train_loss = {}'.format(
@@ -284,10 +276,11 @@ class RNN_Model:
                     self.X_length: X_length[start:end],
                     self.Y_length: Y_length[start:end],
                     self.Indices_word: b}
-            loss_val, total_correct, prediction, mask, correct = session.run([self.calculate_loss, self.correct_predictions,
-                                                               self.pred, self.masked_one_hot_prediction, self.correct_prediction], feed_dict=feed)
+            loss_val, total_correct, prediction, mask, correct = session.run(
+                [self.calculate_loss, self.correct_predictions,
+                 self.pred, self.masked_one_hot_prediction, self.correct_prediction], feed_dict=feed)
             total_processed_examples += sum(Y_length[start:end])
-            total_correct_examples += total_correct - ((end-start)*story_word_maxlen - sum(Y_length[start:end]))
+            total_correct_examples += total_correct - ((end - start) * story_word_maxlen - sum(Y_length[start:end]))
             total_loss_val.append(loss_val)
             Prediction.append(prediction)
             Mask.append(mask)
@@ -343,9 +336,9 @@ def parse_stories(lines):
 
 
 def get_stories(f):
-    '''Given a file name, read the file, retrieve the stories, and then convert the sentences into a single story.
+    """Given a file name, read the file, retrieve the stories, and then convert the sentences into a single story.
     If max_length is supplied, any stories longer than max_length tokens will be discarded.
-    '''
+    """
     data = parse_stories(f.readlines())
     flatten = lambda data: reduce(lambda x, y: x + y, data)
     data = [(flatten(story_char), flatten(story_word)) for story_char, story_word in data]
@@ -364,8 +357,8 @@ def vectorize_stories(data, char_idx, word_idx):
     for story_char, story_word in data:
         x = [char_idx[c] for c in story_char]
         y = [word_idx[w] for w in story_word]
-        indices_word = [[k,i] for i, o in enumerate(x) if o == char_idx[" "] or o == char_idx["."]]
-        indices_sentence = [[k,i] for i, o in enumerate(x) if o == char_idx["."]]
+        indices_word = [[k, i] for i, o in enumerate(x) if o == char_idx[" "] or o == char_idx["."]]
+        indices_sentence = [[k, i] for i, o in enumerate(x) if o == char_idx["."]]
 
         X.append(x)
         Y.append(y)
@@ -375,14 +368,14 @@ def vectorize_stories(data, char_idx, word_idx):
         Indices_word.append(indices_word)
         Indices_sentence.append(indices_sentence)
 
-        k+=1
+        k += 1
 
-    return pad_sequences(X, type='input'), pad_sequences(Y), X_length, Y_length, Indices_word, Indices_sentence
+    return pad_sequences(X, position='input'), pad_sequences(Y), X_length, Y_length, Indices_word, Indices_sentence
 
 
-def pad_sequences(sequences, maxlen=None, dtype='int32', type=None,
+def pad_sequences(sequences, maxlen=None, dtype='int32', position=None,
                   padding='post', truncating='post', value=0):
-    '''Pads each sequence to the same length:
+    """Pads each sequence to the same length:
     the length of the longest sequence.
 
     If maxlen is provided, any sequence longer
@@ -403,7 +396,7 @@ def pad_sequences(sequences, maxlen=None, dtype='int32', type=None,
 
     # Returns
         x: numpy array with dimensions (number_of_sequences, maxlen)
-    '''
+    """
     lengths = [len(s) for s in sequences]
 
     nb_samples = len(sequences)
@@ -418,7 +411,7 @@ def pad_sequences(sequences, maxlen=None, dtype='int32', type=None,
             sample_shape = np.asarray(s).shape[1:]
             break
 
-    if type == 'input':
+    if position == 'input':
         x = (np.ones((nb_samples, story_char_maxlen) + sample_shape) * value).astype(dtype)
     else:
         x = (np.ones((nb_samples, story_word_maxlen) + sample_shape) * value).astype(dtype)
@@ -446,6 +439,7 @@ def pad_sequences(sequences, maxlen=None, dtype='int32', type=None,
         else:
             raise ValueError('Padding type "%s" not understood' % padding)
     return x
+
 
 tasks = [
     'qa1_single-supporting-fact', 'qa2_two-supporting-facts', 'qa3_three-supporting-facts',
@@ -479,7 +473,7 @@ if __name__ == "__main__":
         vocab_word_size = len(vocab_word) + 1
         char_idx = dict((c, i + 1) for i, c in enumerate(vocab_char))
         word_idx = dict((c, i + 1) for i, c in enumerate(vocab_word))
-        idx_char ={v: k for k, v in char_idx.iteritems()}
+        idx_char = {v: k for k, v in char_idx.iteritems()}
         idx_char[0] = "_PAD"
         idx_word = {v: k for k, v in word_idx.iteritems()}
         idx_word[0] = "_PAD"
@@ -504,7 +498,7 @@ if __name__ == "__main__":
         config.num_steps_story_word = story_word_maxlen
 
         with tf.Graph().as_default() as g:
-            model = RNN_Model(config)
+            model = NeuralModel(config)
             init = tf.global_variables_initializer()
             saver = tf.train.Saver()
 
@@ -518,10 +512,9 @@ if __name__ == "__main__":
                     if verbose:
                         print('Epoch {}'.format(epoch))
 
-                    train_loss, val_loss, train_acc, val_acc, prediction, mask, correct, labels = model.run_epoch(session,
-                                                                               (X, Y, X_length, Y_length,
-                                                                                Indices_word, Indices_sentence),
-                                                                               train_op=model.train_step)
+                    train_loss, val_loss, train_acc, val_acc, prediction, mask, correct, labels = model.run_epoch(
+                        session, (X, Y, X_length, Y_length, Indices_word, Indices_sentence),
+                        train_op=model.train_step)
 
                     # save TF summaries
                     tf.summary.scalar("train_loss", train_loss)
