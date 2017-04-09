@@ -13,7 +13,7 @@ import datetime
 import tensorflow as tf
 from tensorflow.core.framework import summary_pb2
 
-from utils.qrncell import QRNCell
+from qrn.qrncell import QRNCell
 
 
 class Config:
@@ -23,15 +23,20 @@ class Config:
     information parameters. Model objects are passed a Config() object at
     instantiation.
     """
+
+    def __init__(self):
+        pass
+
     batch_size = 32
-    embed_size = 100
-    hidden_size = 100
+    embed_size = 50
+    hidden_size = 50
     vocab_size = None
+    num_steps_sentence = None
     num_steps_story = None
     num_steps_question = None
-    max_epochs = 300
-    dropout = 1
-    lr = 0.001
+    max_epochs = 200
+    dropout = 0.6
+    lr = 0.0015
 
 
 class RNN_Model:
@@ -50,7 +55,8 @@ class RNN_Model:
             self.correct_predictions = tf.reduce_sum(tf.cast(correct_prediction, 'int32'))
 
         with tf.name_scope('Loss'):
-            self.calculate_loss = self.add_loss_op(self.output)
+            loss, lossL2 = self.add_loss_op(self.output)
+            self.calculate_loss = loss + lossL2
         with tf.name_scope('Train'):
             self.train_step = self.add_training_op(self.calculate_loss)
 
@@ -58,7 +64,7 @@ class RNN_Model:
         """Generate placeholder variables to represent the input tensors
         """
         self.input_story_placeholder = tf.placeholder(
-            tf.int32, shape=[None, self.config.num_steps_story], name='InputStory')
+            tf.int32, shape=[None, self.config.num_steps_story, self.config.num_steps_sentence], name='InputStory')
         self.input_question_placeholder = tf.placeholder(
             tf.int32, shape=[None, self.config.num_steps_question], name='InputQuestion')
         self.labels_placeholder = tf.placeholder(
@@ -77,7 +83,14 @@ class RNN_Model:
         inputs_story = tf.nn.embedding_lookup(embedding, self.input_story_placeholder)
         inputs_question = tf.nn.embedding_lookup(embedding, self.input_question_placeholder)
 
-        return inputs_story, inputs_question
+        ones_initializer = tf.constant_initializer(1.0)
+
+        inputs_question = tf.expand_dims(inputs_question, 1)
+        encoded_story = get_input_encoding(inputs_story, ones_initializer, 'StoryEncoding')
+        encoded_query = get_input_encoding(inputs_question, ones_initializer, 'QueryEncoding')
+        encoded_query = tf.tile(encoded_query, tf.stack([1, self.config.num_steps_story, 1]), name=None)
+
+        return encoded_story, encoded_query
 
     def add_projection(self, rnn_output):
         """Adds a projection layer.
@@ -86,7 +99,7 @@ class RNN_Model:
         over the vocabulary.
 
         Args:
-          rnn_outputs: List of length num_steps, each of whose elements should be
+          rnn_output: List of length num_steps, each of whose elements should be
                        a tensor of shape (batch_size, embed_size).
         Returns:
           outputs: List of length num_steps, each a tensor of shape
@@ -96,9 +109,9 @@ class RNN_Model:
             U = tf.get_variable('Weights',
                                 [self.config.hidden_size, self.config.vocab_size])
             b = tf.get_variable('Bias', [self.config.vocab_size])
-            output = tf.matmul(rnn_output, U) + b
+            outputs = tf.matmul(rnn_output, U) + b
 
-        return output
+        return outputs
 
     def add_loss_op(self, output):
         """Adds loss ops to the computational graph.
@@ -108,12 +121,14 @@ class RNN_Model:
         Returns:
           loss: A 0-d tensor (scalar)
         """
+        var = tf.trainable_variables()
         cross_entropy = tf.reduce_mean(
             tf.nn.softmax_cross_entropy_with_logits(logits=output, labels=self.labels_placeholder))
         tf.add_to_collection('total_loss', cross_entropy)
         loss = tf.add_n(tf.get_collection('total_loss'))
+        lossL2 = tf.add_n([tf.nn.l2_loss(v) for v in var if 'Bias' not in v.name]) * 0.001
 
-        return loss
+        return loss, lossL2
 
     def add_training_op(self, loss):
         """Sets up the training Ops.
@@ -140,6 +155,9 @@ class RNN_Model:
 
             a, b = tf.nn.dynamic_rnn(qrn, [inputs_story, a], dtype=tf.float32)
             a, b = tf.nn.dynamic_rnn(qrn, [inputs_story, a], dtype=tf.float32)
+            # a, b = tf.nn.dynamic_rnn(qrn, [inputs_story, a], dtype=tf.float32)
+            # a, b = tf.nn.dynamic_rnn(qrn, [inputs_story, a], dtype=tf.float32)
+            # a, b = tf.nn.dynamic_rnn(qrn, [inputs_story, a], dtype=tf.float32)
 
         return b
 
@@ -209,7 +227,6 @@ class RNN_Model:
                 sys.stdout.write('\r')
         train_acc = total_correct_examples / float(total_processed_examples)
 
-
         Story = []
         Question = []
         Answer = []
@@ -267,7 +284,6 @@ def parse_stories(lines, only_supporting=False):
         if '\t' in line:
             q, a, supporting = line.split('\t')
             q = tokenize_word(q)
-            substory = None
             if only_supporting:
                 # Only select the related substory
                 supporting = map(int, supporting.split())
@@ -284,99 +300,62 @@ def parse_stories(lines, only_supporting=False):
 
 
 def get_stories(f, only_supporting=False, max_length=None):
-    '''Given a file name, read the file, retrieve the stories, and then convert the sentences into a single story.
+    """Given a file name, read the file, retrieve the stories, and then convert the sentences into a single story.
     If max_length is supplied, any stories longer than max_length tokens will be discarded.
-    '''
+    """
     data = parse_stories(f.readlines(), only_supporting=only_supporting)
-    flatten = lambda data: reduce(lambda x, y: x + y, data)
-    data = [(flatten(story), q, answer) for story, q, answer in data if
-            not max_length or len(flatten(story)) < max_length]
+    data = [(story, q, answer) for story, q, answer in data if
+            not max_length or len(story) < max_length]
     return data
 
 
-def vectorize_stories(data, word_idx, maxlen_X, maxlen_Xq):
+def vectorize_stories(data, word_idx, sentence_maxlen, story_maxlen, query_maxlen):
     X = []
     Xq = []
     Y = []
     X_length = []
 
     for story, query, answer in data:
-        x = [word_idx[w] for w in story]
+        sentences = []
+        for s in story:
+            sentence = [word_idx[w] for w in s]
+            for _ in range(sentence_maxlen - len(sentence)):
+                sentence.append(0)
+            assert len(sentence) == sentence_maxlen
+            sentences.append(sentence)
+        X_length.append(len(sentences))
+
+        ## story
+        for _ in range(story_maxlen - len(sentences)):
+            sentences.append([0 for _ in range(sentence_maxlen)])
+
+        ## query
         xq = [word_idx[w] for w in query]
-
-        X_length.append(len(x))
-
+        for _ in range(query_maxlen - len(xq)):
+            xq.append(0)
+        ## answer
         y = np.zeros(len(word_idx) + 1)  # let's not forget that index 0 is reserved
         y[word_idx[answer]] = 1
-        X.append(x)
+
+        X.append(sentences)
         Xq.append(xq)
         Y.append(y)
 
-    return pad_sequences(X, maxlen=maxlen_X), pad_sequences(Xq, maxlen=maxlen_Xq), np.array(Y), X_length
+    return X, Xq, np.array(Y), X_length
 
 
-def pad_sequences(sequences, maxlen=None, dtype='int32',
-                  padding='post', truncating='post', value=0):
-    '''Pads each sequence to the same length:
-    the length of the longest sequence.
+def get_input_encoding(embedding, initializer=None, scope=None):
+    """
+    Implementation of the learned multiplicative mask from Section 2.1, Equation 1. This module is also described
+    in [End-To-End Memory Networks](https://arxiv.org/abs/1502.01852) as Position Encoding (PE). The mask allows
+    the ordering of words in a sentence to affect the encoding.
+    """
+    with tf.variable_scope(scope, 'PE', initializer=initializer):
+        _, _, max_sentence_length, _ = embedding.get_shape().as_list()
+        positional_mask = tf.get_variable('positional_mask', [max_sentence_length, 1])
+        encoded_input = tf.reduce_sum(embedding * positional_mask, reduction_indices=[2])
+        return encoded_input
 
-    If maxlen is provided, any sequence longer
-    than maxlen is truncated to maxlen.
-    Truncation happens off either the beginning (default) or
-    the end of the sequence.
-
-    Supports post-padding and pre-padding (default).
-
-    # Arguments
-        sequences: list of lists where each element is a sequence
-        maxlen: int, maximum length
-        dtype: type to cast the resulting sequence.
-        padding: 'pre' or 'post', pad either before or after each sequence.
-        truncating: 'pre' or 'post', remove values from sequences larger than
-            maxlen either in the beginning or in the end of the sequence
-        value: float, value to pad the sequences to the desired value.
-
-    # Returns
-        x: numpy array with dimensions (number_of_sequences, maxlen)
-    '''
-    lengths = [len(s) for s in sequences]
-
-    nb_samples = len(sequences)
-    if maxlen is None:
-        maxlen = np.max(lengths)
-
-    # take the sample shape from the first non empty sequence
-    # checking for consistency in the main loop below.
-    sample_shape = tuple()
-    for s in sequences:
-        if len(s) > 0:
-            sample_shape = np.asarray(s).shape[1:]
-            break
-
-    x = (np.ones((nb_samples, maxlen) + sample_shape) * value).astype(dtype)
-    for idx, s in enumerate(sequences):
-        if len(s) == 0:
-            continue  # empty list was found
-        if truncating == 'pre':
-            trunc = s[-maxlen:]
-        elif truncating == 'post':
-            trunc = s[:maxlen]
-        else:
-            raise ValueError('Truncating type "%s" not understood' % truncating)
-
-        # check `trunc` has expected shape
-        trunc = np.asarray(trunc, dtype=dtype)
-        if trunc.shape[1:] != sample_shape:
-            raise ValueError('Shape of sample %s of sequence at position %s is different from expected shape %s' %
-                             (trunc.shape[1:], idx, sample_shape))
-
-        if padding == 'post':
-            x[idx, :len(trunc)] = trunc
-        elif padding == 'pre':
-            x[idx, -len(trunc):] = trunc
-        else:
-            raise ValueError('Padding type "%s" not understood' % padding)
-    return x
 
 tasks = [
     'qa1_single-supporting-fact', 'qa2_two-supporting-facts', 'qa3_three-supporting-facts',
@@ -402,30 +381,35 @@ if __name__ == "__main__":
         train = get_stories(tar.extractfile(task_path.format('train')))
         test = get_stories(tar.extractfile(task_path.format('test')))
 
-        vocab = sorted(reduce(lambda x, y: x | y, (set(story + q + [answer]) for story, q, answer in train + test)))
+        flatten = lambda data: reduce(lambda x, y: x + y, data)
+        vocab = sorted(reduce(lambda x, y: x | y, (set(flatten(story) + q + [answer])
+                                                   for story, q, answer in train + test)))
 
         # Reserve 0 for masking via pad_sequences
         vocab_size = len(vocab) + 1
         word_idx = dict((c, i + 1) for i, c in enumerate(vocab))
+
+        sentence_maxlen = max(flatten([[len(s) for s in x] for x, _, _ in train + test]))
         story_maxlen = max(map(len, (x for x, _, _ in train + test)))
         query_maxlen = max(map(len, (x for _, x, _ in train + test)))
         idx_word = {v: k for k, v in word_idx.iteritems()}
         idx_word[0] = "_PAD"
 
-        X, Xq, Y, X_length = vectorize_stories(train, word_idx, story_maxlen, story_maxlen)
-        tX, tXq, tY, tX_length = vectorize_stories(test, word_idx, story_maxlen, story_maxlen)
+        X, Xq, Y, X_length = vectorize_stories(train, word_idx, sentence_maxlen, story_maxlen, query_maxlen)
+        tX, tXq, tY, tX_length = vectorize_stories(test, word_idx, sentence_maxlen, story_maxlen, query_maxlen)
 
         if verbose:
             print('vocab = {}'.format(vocab))
-            print('X.shape = {}'.format(X.shape))
-            print('Xq.shape = {}'.format(Xq.shape))
+            print('X.shape = {}'.format(np.array(X).shape))
+            print('Xq.shape = {}'.format(np.array(Xq).shape))
             print('Y.shape = {}'.format(Y.shape))
             print('story_maxlen, query_maxlen = {}, {}'.format(story_maxlen, query_maxlen))
 
         config = Config()
         config.vocab_size = vocab_size
+        config.num_steps_sentence = sentence_maxlen
         config.num_steps_story = story_maxlen
-        config.num_steps_question = story_maxlen
+        config.num_steps_question = query_maxlen
 
         with tf.Graph().as_default() as g:
             model = RNN_Model(config)
@@ -434,37 +418,39 @@ if __name__ == "__main__":
 
             with tf.Session() as session:
                 session.run(init)
-                timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S_3r100")
                 model_dir = os.path.join("logs_QRN/", task, str(timestamp))
                 writer = tf.summary.FileWriter(model_dir, graph=g)
                 # saver.restore(session, "logs_Char2Word/qa1_single-supporting-fact/good/model")
                 for epoch in range(config.max_epochs):
-                    if verbose:
-                        print('Epoch {}'.format(epoch))
+                    print('Epoch {}'.format(epoch))
 
-                    train_loss, train_acc, val_acc, Story, Question, Answer, Prediction = model.run_epoch(session, (X, Xq, Y, X_length), train_op=model.train_step)
-
-                    # save TF summaries
-                    tf.summary.scalar("train_loss", train_loss)
-                    tf.summary.scalar("train_acc", train_acc)
-                    tf.summary.scalar("val_acc", val_acc)
-                    train_loss_S = summary_pb2.Summary.Value(tag="train_loss", simple_value=train_loss.item())
-                    train_acc_S = summary_pb2.Summary.Value(tag="train_acc", simple_value=train_acc)
-                    val_acc_S = summary_pb2.Summary.Value(tag="val_acc", simple_value=val_acc)
-                    summary = summary_pb2.Summary(value=[train_loss_S, train_acc_S, val_acc_S])
-                    writer.add_summary(summary, epoch)
+                    train_loss, train_acc, val_acc, Story, Question, Answer, Prediction = model.run_epoch(session, (
+                        X, Xq, Y, X_length), train_op=model.train_step)
 
                     if verbose:
                         print('Training loss: {}'.format(train_loss))
                         print('Training acc: {}'.format(train_acc))
                         print('Validation acc: {}'.format(val_acc))
-                        print([idx_word[i] for i in Story[0][30]])
-                        print([idx_word[i] for i in Question[0][30]])
-                        print('Answer: {}'.format(idx_word[Answer[0][30].tolist().index(1.)]))
-                        print('Prediction: {}'.format(idx_word[Prediction[0][30]]))
-                    if epoch % 20 == 0:
-                        save_path = saver.save(session, os.path.join(model_dir, "model"))
-                        print("Model saved in file: %s" % save_path)
+                        # print([[idx_word[j] for j in i] for i in Story[0][20]])
+                        # print([idx_word[i] for i in Question[0][20]])
+                        # print('Answer: {}'.format(idx_word[Answer[0][20].tolist().index(1.)]))
+                        # print('Prediction: {}'.format(idx_word[Prediction[0][20]]))
 
-                test_acc = model.predict(session, (tX, tXq, tY, tX_length))
-                print('Testing acc: {}'.format(test_acc))
+                    if epoch % 20 == 0:
+                        # save_path = saver.save(session, os.path.join(model_dir, "model"))
+                        # print("Model saved in file: %s" % save_path)
+                        test_acc = model.predict(session, (tX, tXq, tY, tX_length))
+                        print('Testing acc: {}'.format(test_acc))
+
+                    # save TF summaries
+                    tf.summary.scalar("train_loss", train_loss)
+                    tf.summary.scalar("train_acc", train_acc)
+                    tf.summary.scalar("val_acc", val_acc)
+                    tf.summary.scalar("test_acc", test_acc)
+                    train_loss_S = summary_pb2.Summary.Value(tag="train_loss", simple_value=train_loss.item())
+                    train_acc_S = summary_pb2.Summary.Value(tag="train_acc", simple_value=train_acc)
+                    val_acc_S = summary_pb2.Summary.Value(tag="val_acc", simple_value=val_acc)
+                    test_acc_S = summary_pb2.Summary.Value(tag="test_acc", simple_value=test_acc)
+                    summary = summary_pb2.Summary(value=[train_loss_S, train_acc_S, val_acc_S, test_acc_S])
+                    writer.add_summary(summary, epoch)

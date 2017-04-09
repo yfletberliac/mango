@@ -27,12 +27,12 @@ class Config:
 
     batch_size = 32
     embed_size = 100
-    hidden_size = 300
+    hidden_size = 100
     vocab_char_size = None
     vocab_word_size = None
     num_steps_story_char = None
     num_steps_story_word = None
-    max_epochs = 4000
+    max_epochs = 100
     dropout = 1
     lr = 0.002
 

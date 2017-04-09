@@ -2,8 +2,8 @@ import tensorflow as tf
 from tensorflow.python.ops.math_ops import tanh, sigmoid
 from tensorflow.python.ops import variable_scope as vs
 
-class QRNCell(tf.contrib.rnn.RNNCell):
 
+class QRNCell(tf.contrib.rnn.RNNCell):
     def __init__(self, num_units, input_size=None, activation=tanh):
         self._num_units = num_units
         self._activation = activation
@@ -22,13 +22,14 @@ class QRNCell(tf.contrib.rnn.RNNCell):
                 z = sigmoid(linear(inputs[0] * inputs[1], self._num_units))
             with vs.variable_scope('candidate'):
                 c = self._activation(linear(tf.concat(inputs, 1), self._num_units))
-            new_h = z * c + (1 - z) * state
+            with vs.variable_scope('reset_gate'):
+                r = sigmoid(linear(inputs[0] * inputs[1], self._num_units))
+            new_h = z * r * c + (1 - z) * state
         return new_h, new_h
 
 
-
 def linear(input_, output_size, scope=None):
-    '''
+    """
     Linear map: output[k] = sum_i(Matrix[k, i] * args[i] ) + Bias[k]
     Args:
     args: a tensor or a list of 2D, batch x n, Tensors.
@@ -39,7 +40,7 @@ def linear(input_, output_size, scope=None):
     sum_i(args[i] * W[i]), where W[i]s are newly created matrices.
     Raises:
     ValueError: if some of the arguments has unspecified or wrong shape.
-    '''
+    """
 
     shape = input_.get_shape().as_list()
     if len(shape) != 2:
