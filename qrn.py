@@ -34,9 +34,9 @@ class Config:
     num_steps_sentence = None
     num_steps_story = None
     num_steps_question = None
-    max_epochs = 700
+    max_epochs = 500
     dropout = 1
-    lr = 0.2
+    lr = 0.5
 
 
 class RNN_Model:
@@ -56,7 +56,7 @@ class RNN_Model:
 
         with tf.name_scope('Loss'):
             loss, lossL2 = self.add_loss_op(self.output)
-            self.calculate_loss = loss
+            self.calculate_loss = loss + lossL2
         with tf.name_scope('Train'):
             self.train_step = self.add_training_op(self.calculate_loss)
 
@@ -84,14 +84,28 @@ class RNN_Model:
         inputs_story = tf.nn.embedding_lookup(embedding, self.input_story_placeholder)
         inputs_question = tf.nn.embedding_lookup(embedding, self.input_question_placeholder)
 
-        ones_initializer = tf.constant_initializer(1.0)
-
+        # Position Encoding
         inputs_question = tf.expand_dims(inputs_question, 1)
-        encoded_story = get_input_encoding(inputs_story, ones_initializer, 'StoryEncoding')
-        encoded_query = get_input_encoding(inputs_question, ones_initializer, 'QueryEncoding')
+        encoded_story = self.get_position_encoding(inputs_story, self.config.num_steps_sentence, 'StoryEncoding')
+        encoded_query = self.get_position_encoding(inputs_question, self.config.num_steps_question, 'QueryEncoding')
         encoded_query = tf.tile(encoded_query, tf.stack([1, self.config.num_steps_story, 1]), name=None)
 
         return encoded_story, encoded_query
+
+    def get_position_encoding(self, embedding, max_length, scope=None):
+        """
+        Module described in [End-To-End Memory Networks](https://arxiv.org/abs/1502.01852) as Position Encoding (PE).
+        The mask allows the ordering of words in a sentence to affect the encoding.
+        """
+        J, d = max_length, self.config.embed_size
+        with tf.variable_scope(scope, 'PE'):
+            b = [1 - k / d for k in range(1, d + 1)]
+            w = [[j * (2 * k / d - 1) for k in range(1, d + 1)] for j in range(1, J + 1)]
+            self.b = tf.constant(b, shape=[d])
+            self.w = tf.constant(w, shape=[J, d])
+            l = self.b + self.w/J
+            m = tf.reduce_sum(embedding * tf.cast(l, tf.float32), 2, name='m')
+        return m
 
     def add_projection(self, rnn_output):
         """Adds a projection layer.
@@ -156,9 +170,6 @@ class RNN_Model:
 
             a, b = tf.nn.dynamic_rnn(qrn, [inputs_story, a], dtype=tf.float32)
             a, b = tf.nn.dynamic_rnn(qrn, [inputs_story, a], dtype=tf.float32)
-            # a, b = tf.nn.dynamic_rnn(qrn, [inputs_story, a], dtype=tf.float32)
-            # a, b = tf.nn.dynamic_rnn(qrn, [inputs_story, a], dtype=tf.float32)
-            # a, b = tf.nn.dynamic_rnn(qrn, [inputs_story, a], dtype=tf.float32)
 
         return b
 
@@ -345,119 +356,103 @@ def vectorize_stories(data, word_idx, sentence_maxlen, story_maxlen, query_maxle
     return X, Xq, np.array(Y), X_length
 
 
-def get_input_encoding(embedding, initializer=None, scope=None):
-    """
-    Implementation of the learned multiplicative mask from Section 2.1, Equation 1. This module is also described
-    in [End-To-End Memory Networks](https://arxiv.org/abs/1502.01852) as Position Encoding (PE). The mask allows
-    the ordering of words in a sentence to affect the encoding.
-    """
-    with tf.variable_scope(scope, 'PE', initializer=initializer):
-        _, _, max_sentence_length, _ = embedding.get_shape().as_list()
-        positional_mask = tf.get_variable('positional_mask', [max_sentence_length, 1])
-        encoded_input = tf.reduce_sum(embedding * positional_mask, reduction_indices=[2])
-        return encoded_input
-
-
-# tasks = [
-#     'qa1_single-supporting-fact', 'qa2_two-supporting-facts', 'qa3_three-supporting-facts',
-#     'qa4_two-arg-relations', 'qa5_three-arg-relations', 'qa6_yes-no-questions', 'qa7_counting',
-#     'qa8_lists-sets', 'qa9_simple-negation', 'qa10_indefinite-knowledge',
-#     'qa11_basic-coreference', 'qa12_conjunction', 'qa13_compound-coreference',
-#     'qa14_time-reasoning', 'qa15_basic-deduction', 'qa16_basic-induction', 'qa17_positional-reasoning',
-#     'qa18_size-reasoning', 'qa19_path-finding', 'qa20_agents-motivations'
-# ]
-
 tasks = [
-    'qa8_lists-sets', 'qa2_two-supporting-facts',
-    'qa3_three-supporting-facts', 'qa5_three-arg-relations'
+    'qa1_single-supporting-fact', 'qa2_two-supporting-facts', 'qa3_three-supporting-facts',
+    'qa4_two-arg-relations', 'qa5_three-arg-relations', 'qa6_yes-no-questions', 'qa7_counting',
+    'qa8_lists-sets', 'qa9_simple-negation', 'qa10_indefinite-knowledge',
+    'qa11_basic-coreference', 'qa12_conjunction', 'qa13_compound-coreference',
+    'qa14_time-reasoning', 'qa15_basic-deduction', 'qa16_basic-induction', 'qa17_positional-reasoning',
+    'qa18_size-reasoning', 'qa19_path-finding', 'qa20_agents-motivations'
 ]
 
 
 if __name__ == "__main__":
-    np.random.seed(1337)  # for reproducibility
-    verbose = True
+    for seed in [1336, 1337]:
+        print(seed)
+        np.random.seed(seed)  # for reproducibility
+        verbose = True
 
-    path = 'datasets/babi_tasks_data_1_20_v1.2.tar.gz'
-    tar = tarfile.open(path)
-    tasks_dir = 'tasks_1-20_v1-2/en/'
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S_3r200")
+        path = 'datasets/babi_tasks_data_1_20_v1.2.tar.gz'
+        tar = tarfile.open(path)
+        tasks_dir = 'tasks_1-20_v1-2/en/'
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S_3r200")
 
-    for task in tasks:
-        print(task)
+        for task in tasks:
+            print(task)
 
-        task_path = tasks_dir + task + '_{}.txt'
-        train = get_stories(tar.extractfile(task_path.format('train')))
-        test = get_stories(tar.extractfile(task_path.format('test')))
+            task_path = tasks_dir + task + '_{}.txt'
+            train = get_stories(tar.extractfile(task_path.format('train')))
+            test = get_stories(tar.extractfile(task_path.format('test')))
 
-        flatten = lambda data: reduce(lambda x, y: x + y, data)
-        vocab = sorted(reduce(lambda x, y: x | y, (set(flatten(story) + q + [answer])
-                                                   for story, q, answer in train + test)))
+            flatten = lambda data: reduce(lambda x, y: x + y, data)
+            vocab = sorted(reduce(lambda x, y: x | y, (set(flatten(story) + q + [answer])
+                                                       for story, q, answer in train + test)))
 
-        # Reserve 0 for masking via pad_sequences
-        vocab_size = len(vocab) + 1
-        word_idx = dict((c, i + 1) for i, c in enumerate(vocab))
+            # Reserve 0 for masking via pad_sequences
+            vocab_size = len(vocab) + 1
+            word_idx = dict((c, i + 1) for i, c in enumerate(vocab))
 
-        sentence_maxlen = max(flatten([[len(s) for s in x] for x, _, _ in train + test]))
-        story_maxlen = max(map(len, (x for x, _, _ in train + test)))
-        query_maxlen = max(map(len, (x for _, x, _ in train + test)))
-        idx_word = {v: k for k, v in word_idx.iteritems()}
-        idx_word[0] = "_PAD"
+            sentence_maxlen = max(flatten([[len(s) for s in x] for x, _, _ in train + test]))
+            story_maxlen = max(map(len, (x for x, _, _ in train + test)))
+            query_maxlen = max(map(len, (x for _, x, _ in train + test)))
+            idx_word = {v: k for k, v in word_idx.iteritems()}
+            idx_word[0] = "_PAD"
 
-        X, Xq, Y, X_length = vectorize_stories(train, word_idx, sentence_maxlen, story_maxlen, query_maxlen)
-        tX, tXq, tY, tX_length = vectorize_stories(test, word_idx, sentence_maxlen, story_maxlen, query_maxlen)
+            X, Xq, Y, X_length = vectorize_stories(train, word_idx, sentence_maxlen, story_maxlen, query_maxlen)
+            tX, tXq, tY, tX_length = vectorize_stories(test, word_idx, sentence_maxlen, story_maxlen, query_maxlen)
 
-        if verbose:
-            print('vocab = {}'.format(vocab))
-            print('X.shape = {}'.format(np.array(X).shape))
-            print('Xq.shape = {}'.format(np.array(Xq).shape))
-            print('Y.shape = {}'.format(Y.shape))
-            print('story_maxlen, query_maxlen = {}, {}'.format(story_maxlen, query_maxlen))
+            if verbose:
+                print('vocab = {}'.format(vocab))
+                print('X.shape = {}'.format(np.array(X).shape))
+                print('Xq.shape = {}'.format(np.array(Xq).shape))
+                print('Y.shape = {}'.format(Y.shape))
+                print('story_maxlen, query_maxlen = {}, {}'.format(story_maxlen, query_maxlen))
 
-        config = Config()
-        config.vocab_size = vocab_size
-        config.num_steps_sentence = sentence_maxlen
-        config.num_steps_story = story_maxlen
-        config.num_steps_question = query_maxlen
+            config = Config()
+            config.vocab_size = vocab_size
+            config.num_steps_sentence = sentence_maxlen
+            config.num_steps_story = story_maxlen
+            config.num_steps_question = query_maxlen
 
-        with tf.Graph().as_default() as g:
-            model = RNN_Model(config)
-            init = tf.global_variables_initializer()
-            saver = tf.train.Saver()
+            with tf.Graph().as_default() as g:
+                model = RNN_Model(config)
+                init = tf.global_variables_initializer()
+                saver = tf.train.Saver()
 
-            with tf.Session() as session:
-                session.run(init)
-                model_dir = os.path.join("logs_QRN/", task, str(timestamp))
-                writer = tf.summary.FileWriter(model_dir, graph=g)
-                # saver.restore(session, "logs_Char2Word/qa1_single-supporting-fact/good/model")
-                for epoch in range(config.max_epochs):
-                    print('Epoch {}'.format(epoch))
+                with tf.Session() as session:
+                    session.run(init)
+                    model_dir = os.path.join("logs_QRN/", task, str(timestamp))
+                    writer = tf.summary.FileWriter(model_dir, graph=g)
+                    # saver.restore(session, "logs_Char2Word/qa1_single-supporting-fact/good/model")
+                    for epoch in range(config.max_epochs):
+                        print('Epoch {}'.format(epoch))
 
-                    train_loss, train_acc, val_acc, Story, Question, Answer, Prediction = model.run_epoch(session, (
-                        X, Xq, Y, X_length), train_op=model.train_step)
+                        train_loss, train_acc, val_acc, Story, Question, Answer, Prediction = model.run_epoch(session, (
+                            X, Xq, Y, X_length), train_op=model.train_step)
 
-                    if verbose:
-                        print('Training loss: {}'.format(train_loss))
-                        print('Training acc: {}'.format(train_acc))
-                        print('Validation acc: {}'.format(val_acc))
-                        # print([[idx_word[j] for j in i] for i in Story[0][20]])
-                        # print([idx_word[i] for i in Question[0][20]])
-                        # print('Answer: {}'.format(idx_word[Answer[0][20].tolist().index(1.)]))
-                        # print('Prediction: {}'.format(idx_word[Prediction[0][20]]))
+                        if verbose:
+                            print('Training loss: {}'.format(train_loss))
+                            print('Training acc: {}'.format(train_acc))
+                            print('Validation acc: {}'.format(val_acc))
+                            # print([[idx_word[j] for j in i] for i in Story[0][20]])
+                            # print([idx_word[i] for i in Question[0][20]])
+                            # print('Answer: {}'.format(idx_word[Answer[0][20].tolist().index(1.)]))
+                            # print('Prediction: {}'.format(idx_word[Prediction[0][20]]))
 
-                    if epoch % 20 == 0:
-                        # save_path = saver.save(session, os.path.join(model_dir, "model"))
-                        # print("Model saved in file: %s" % save_path)
-                        test_acc = model.predict(session, (tX, tXq, tY, tX_length))
-                        print('Testing acc: {}'.format(test_acc))
+                        if epoch % 20 == 0:
+                            # save_path = saver.save(session, os.path.join(model_dir, "model"))
+                            # print("Model saved in file: %s" % save_path)
+                            test_acc = model.predict(session, (tX, tXq, tY, tX_length))
+                            print('Testing acc: {}'.format(test_acc))
 
-                    # save TF summaries
-                    tf.summary.scalar("train_loss", train_loss)
-                    tf.summary.scalar("train_acc", train_acc)
-                    tf.summary.scalar("val_acc", val_acc)
-                    tf.summary.scalar("test_acc", test_acc)
-                    train_loss_S = summary_pb2.Summary.Value(tag="train_loss", simple_value=train_loss.item())
-                    train_acc_S = summary_pb2.Summary.Value(tag="train_acc", simple_value=train_acc)
-                    val_acc_S = summary_pb2.Summary.Value(tag="val_acc", simple_value=val_acc)
-                    test_acc_S = summary_pb2.Summary.Value(tag="test_acc", simple_value=test_acc)
-                    summary = summary_pb2.Summary(value=[train_loss_S, train_acc_S, val_acc_S, test_acc_S])
-                    writer.add_summary(summary, epoch)
+                        # save TF summaries
+                        tf.summary.scalar("train_loss", train_loss)
+                        tf.summary.scalar("train_acc", train_acc)
+                        tf.summary.scalar("val_acc", val_acc)
+                        tf.summary.scalar("test_acc", test_acc)
+                        train_loss_S = summary_pb2.Summary.Value(tag="train_loss", simple_value=train_loss.item())
+                        train_acc_S = summary_pb2.Summary.Value(tag="train_acc", simple_value=train_acc)
+                        val_acc_S = summary_pb2.Summary.Value(tag="val_acc", simple_value=val_acc)
+                        test_acc_S = summary_pb2.Summary.Value(tag="test_acc", simple_value=test_acc)
+                        summary = summary_pb2.Summary(value=[train_loss_S, train_acc_S, val_acc_S, test_acc_S])
+                        writer.add_summary(summary, epoch)
