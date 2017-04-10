@@ -28,15 +28,15 @@ class Config:
         pass
 
     batch_size = 32
-    embed_size = 50
-    hidden_size = 50
+    embed_size = 200
+    hidden_size = 200
     vocab_size = None
     num_steps_sentence = None
     num_steps_story = None
     num_steps_question = None
-    max_epochs = 200
-    dropout = 0.6
-    lr = 0.0015
+    max_epochs = 700
+    dropout = 1
+    lr = 0.2
 
 
 class RNN_Model:
@@ -56,7 +56,7 @@ class RNN_Model:
 
         with tf.name_scope('Loss'):
             loss, lossL2 = self.add_loss_op(self.output)
-            self.calculate_loss = loss + lossL2
+            self.calculate_loss = loss
         with tf.name_scope('Train'):
             self.train_step = self.add_training_op(self.calculate_loss)
 
@@ -79,7 +79,8 @@ class RNN_Model:
           inputs: List of length num_steps, each of whose elements should be
                   a tensor of shape (batch_size, embed_size).
         """
-        embedding = tf.get_variable('Embedding', [self.config.vocab_size, self.config.embed_size], trainable=True)
+        embedding = tf.get_variable('Embedding', [self.config.vocab_size, self.config.embed_size], trainable=True,
+                                    initializer=tf.contrib.layers.xavier_initializer())
         inputs_story = tf.nn.embedding_lookup(embedding, self.input_story_placeholder)
         inputs_question = tf.nn.embedding_lookup(embedding, self.input_question_placeholder)
 
@@ -137,7 +138,7 @@ class RNN_Model:
         Returns:
           train_op: The Op for training.
         """
-        optimizer = tf.train.AdamOptimizer(self.config.lr)
+        optimizer = tf.train.AdagradOptimizer(self.config.lr)
         train_op = optimizer.minimize(loss)
 
         return train_op
@@ -357,14 +358,20 @@ def get_input_encoding(embedding, initializer=None, scope=None):
         return encoded_input
 
 
+# tasks = [
+#     'qa1_single-supporting-fact', 'qa2_two-supporting-facts', 'qa3_three-supporting-facts',
+#     'qa4_two-arg-relations', 'qa5_three-arg-relations', 'qa6_yes-no-questions', 'qa7_counting',
+#     'qa8_lists-sets', 'qa9_simple-negation', 'qa10_indefinite-knowledge',
+#     'qa11_basic-coreference', 'qa12_conjunction', 'qa13_compound-coreference',
+#     'qa14_time-reasoning', 'qa15_basic-deduction', 'qa16_basic-induction', 'qa17_positional-reasoning',
+#     'qa18_size-reasoning', 'qa19_path-finding', 'qa20_agents-motivations'
+# ]
+
 tasks = [
-    'qa1_single-supporting-fact', 'qa2_two-supporting-facts', 'qa3_three-supporting-facts',
-    'qa4_two-arg-relations', 'qa5_three-arg-relations', 'qa6_yes-no-questions', 'qa7_counting',
-    'qa8_lists-sets', 'qa9_simple-negation', 'qa10_indefinite-knowledge',
-    'qa11_basic-coreference', 'qa12_conjunction', 'qa13_compound-coreference',
-    'qa14_time-reasoning', 'qa15_basic-deduction', 'qa16_basic-induction', 'qa17_positional-reasoning',
-    'qa18_size-reasoning', 'qa19_path-finding', 'qa20_agents-motivations'
+    'qa8_lists-sets', 'qa2_two-supporting-facts',
+    'qa3_three-supporting-facts', 'qa5_three-arg-relations'
 ]
+
 
 if __name__ == "__main__":
     np.random.seed(1337)  # for reproducibility
@@ -373,6 +380,7 @@ if __name__ == "__main__":
     path = 'datasets/babi_tasks_data_1_20_v1.2.tar.gz'
     tar = tarfile.open(path)
     tasks_dir = 'tasks_1-20_v1-2/en/'
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S_3r200")
 
     for task in tasks:
         print(task)
@@ -418,7 +426,6 @@ if __name__ == "__main__":
 
             with tf.Session() as session:
                 session.run(init)
-                timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S_3r100")
                 model_dir = os.path.join("logs_QRN/", task, str(timestamp))
                 writer = tf.summary.FileWriter(model_dir, graph=g)
                 # saver.restore(session, "logs_Char2Word/qa1_single-supporting-fact/good/model")
