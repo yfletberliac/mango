@@ -28,8 +28,8 @@ class Config:
         pass
 
     batch_size = 32
-    embed_size = 200
-    hidden_size = 200
+    embed_size = 50
+    hidden_size = 50
     vocab_size = None
     num_steps_sentence = None
     num_steps_story = None
@@ -122,7 +122,8 @@ class RNN_Model:
         """
         with tf.variable_scope('Projection'):
             U = tf.get_variable('Weights',
-                                [self.config.hidden_size, self.config.vocab_size])
+                                [self.config.hidden_size, self.config.vocab_size], trainable=True,
+                                initializer=tf.contrib.layers.xavier_initializer())
             b = tf.get_variable('Bias', [self.config.vocab_size])
             outputs = tf.matmul(rnn_output, U) + b
 
@@ -356,8 +357,16 @@ def vectorize_stories(data, word_idx, sentence_maxlen, story_maxlen, query_maxle
     return X, Xq, np.array(Y), X_length
 
 
+# tasks = [
+#     'qa1_single-supporting-fact', 'qa2_two-supporting-facts', 'qa3_three-supporting-facts',
+#     'qa4_two-arg-relations', 'qa5_three-arg-relations', 'qa6_yes-no-questions', 'qa7_counting',
+#     'qa8_lists-sets', 'qa9_simple-negation', 'qa10_indefinite-knowledge',
+#     'qa11_basic-coreference', 'qa12_conjunction', 'qa13_compound-coreference',
+#     'qa14_time-reasoning', 'qa15_basic-deduction', 'qa16_basic-induction', 'qa17_positional-reasoning',
+#     'qa18_size-reasoning', 'qa19_path-finding', 'qa20_agents-motivations'
+# ]
 tasks = [
-    'qa1_single-supporting-fact', 'qa2_two-supporting-facts', 'qa3_three-supporting-facts',
+    'qa2_two-supporting-facts', 'qa3_three-supporting-facts',
     'qa4_two-arg-relations', 'qa5_three-arg-relations', 'qa6_yes-no-questions', 'qa7_counting',
     'qa8_lists-sets', 'qa9_simple-negation', 'qa10_indefinite-knowledge',
     'qa11_basic-coreference', 'qa12_conjunction', 'qa13_compound-coreference',
@@ -367,7 +376,7 @@ tasks = [
 
 
 if __name__ == "__main__":
-    for seed in [1336, 1337]:
+    for seed in [3333, 4444]:
         print(seed)
         np.random.seed(seed)  # for reproducibility
         verbose = True
