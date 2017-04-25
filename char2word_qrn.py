@@ -626,12 +626,13 @@ if __name__ == "__main__":
                         # print('Prediction: {}'.format(idx_word[Prediction[0][20]]))
 
                     if epoch % 20 == 0:
-                        # save_path = saver.save(session, os.path.join(model_dir, "model"))
-                        # print("Model saved in file: %s" % save_path)
                         test_acc = model.predict(session, (tX, tXq, tY, tX_length, tY_length,
                                                            tIndices_word, tIndices_sentence, tqX_length,
                                                            tqY_length, tqIndices_word))
                         print('Testing acc: {}'.format(test_acc))
+                    if epoch %100 == 0:
+                        save_path = saver.save(session, os.path.join(model_dir, "model"))
+                        print("Model saved in file: %s" % save_path)
 
                     # save TF summaries
                     tf.summary.scalar("train_loss", train_loss)

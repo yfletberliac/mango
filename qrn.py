@@ -27,14 +27,14 @@ class Config:
     def __init__(self):
         pass
 
-    batch_size = 128
+    batch_size = 256
     embed_size = 200
     hidden_size = 200
     vocab_size = None
     num_steps_sentence = None
     num_steps_story = None
     num_steps_question = None
-    max_epochs = 400
+    max_epochs = 500
     dropout = 1
     lr = 0.1
 
@@ -142,7 +142,7 @@ class RNN_Model:
             tf.nn.softmax_cross_entropy_with_logits(logits=output, labels=self.labels_placeholder))
         tf.add_to_collection('total_loss', cross_entropy)
         loss = tf.add_n(tf.get_collection('total_loss'))
-        lossL2 = tf.add_n([tf.nn.l2_loss(v) for v in var if 'Bias' not in v.name]) * 0.0005
+        lossL2 = tf.add_n([tf.nn.l2_loss(v) for v in var if 'Bias' not in v.name]) * 0.0001
 
         return loss, lossL2
 
@@ -452,10 +452,11 @@ if __name__ == "__main__":
                             # print('Prediction: {}'.format(idx_word[Prediction[0][20]]))
 
                         if epoch % 20 == 0:
-                            # save_path = saver.save(session, os.path.join(model_dir, "model"))
-                            # print("Model saved in file: %s" % save_path)
                             test_acc = model.predict(session, (tX, tXq, tY, tX_length))
                             print('Testing acc: {}'.format(test_acc))
+                        if epoch % 100 == 0:
+                            save_path = saver.save(session, os.path.join(model_dir, "model"))
+                            print("Model saved in file: %s" % save_path)
 
                         # save TF summaries
                         tf.summary.scalar("train_loss", train_loss)
