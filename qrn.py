@@ -27,16 +27,16 @@ class Config:
     def __init__(self):
         pass
 
-    batch_size = 32
-    embed_size = 50
-    hidden_size = 50
+    batch_size = 128
+    embed_size = 200
+    hidden_size = 200
     vocab_size = None
     num_steps_sentence = None
     num_steps_story = None
     num_steps_question = None
-    max_epochs = 500
+    max_epochs = 400
     dropout = 1
-    lr = 0.5
+    lr = 0.1
 
 
 class RNN_Model:
@@ -142,7 +142,7 @@ class RNN_Model:
             tf.nn.softmax_cross_entropy_with_logits(logits=output, labels=self.labels_placeholder))
         tf.add_to_collection('total_loss', cross_entropy)
         loss = tf.add_n(tf.get_collection('total_loss'))
-        lossL2 = tf.add_n([tf.nn.l2_loss(v) for v in var if 'Bias' not in v.name]) * 0.001
+        lossL2 = tf.add_n([tf.nn.l2_loss(v) for v in var if 'Bias' not in v.name]) * 0.0005
 
         return loss, lossL2
 
@@ -169,6 +169,9 @@ class RNN_Model:
 
             scope.reuse_variables()
 
+            a, b = tf.nn.dynamic_rnn(qrn, [inputs_story, a], dtype=tf.float32)
+            a, b = tf.nn.dynamic_rnn(qrn, [inputs_story, a], dtype=tf.float32)
+            a, b = tf.nn.dynamic_rnn(qrn, [inputs_story, a], dtype=tf.float32)
             a, b = tf.nn.dynamic_rnn(qrn, [inputs_story, a], dtype=tf.float32)
             a, b = tf.nn.dynamic_rnn(qrn, [inputs_story, a], dtype=tf.float32)
 
@@ -383,7 +386,7 @@ if __name__ == "__main__":
 
         path = 'datasets/babi_tasks_data_1_20_v1.2.tar.gz'
         tar = tarfile.open(path)
-        tasks_dir = 'tasks_1-20_v1-2/en/'
+        tasks_dir = 'tasks_1-20_v1-2/en-10k/'
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S_3r200")
 
         for task in tasks:
@@ -430,7 +433,7 @@ if __name__ == "__main__":
 
                 with tf.Session() as session:
                     session.run(init)
-                    model_dir = os.path.join("logs_QRN/", task, str(timestamp))
+                    model_dir = os.path.join("logs_QRN_10k/", task, str(timestamp))
                     writer = tf.summary.FileWriter(model_dir, graph=g)
                     # saver.restore(session, "logs_Char2Word/qa1_single-supporting-fact/good/model")
                     for epoch in range(config.max_epochs):

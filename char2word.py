@@ -169,6 +169,7 @@ class NeuralModel:
             indices_word = tf.reshape(self.Indices_word, [-1, 2])
             ## Extract the time steps corresponding to the end of words indices_word
             inputs1 = tf.gather_nd(self.outputs0, indices_word)
+            print(inputs1)
             inputs1 = tf.reshape(inputs1, [self.config.batch_size, self.config.num_steps_story_word,
                                            self.config.hidden_size])
 
