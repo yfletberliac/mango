@@ -28,8 +28,8 @@ class Config:
         pass
 
     batch_size = 32
-    embed_size = 100
-    hidden_size = 100
+    embed_size = 50
+    hidden_size = 50
     vocab_char_size = None
     vocab_word_size = None
     num_steps_story_char = None
