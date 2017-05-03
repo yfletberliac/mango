@@ -192,8 +192,8 @@ class NeuralModel:
             self.initial_state1 = cell1.zero_state(self.config.batch_size, tf.float32)
 
             self.outputs_story1, self.final_state1 = tf.nn.dynamic_rnn(cell1, inputs1,
-                                                                 sequence_length=self.Y_length,
-                                                                 initial_state=self.initial_state1)
+                                                                       sequence_length=self.Y_length,
+                                                                       initial_state=self.initial_state1)
 
             scope.reuse_variables()
             _, self.final_question1 = tf.nn.dynamic_rnn(cell1, qinputs1,
@@ -224,8 +224,8 @@ class NeuralModel:
         return b
 
     def predict(self, session, data):
-        input_story, input_question, input_labels,\
-        X_length, Y_length, Indices_word, Indices_sentence,\
+        input_story, input_question, input_labels, \
+        X_length, Y_length, Indices_word, Indices_sentence, \
         qX_length, qY_length, qIndices_word = data
 
         config = self.config
@@ -269,8 +269,8 @@ class NeuralModel:
         return acc
 
     def run_epoch(self, session, data, train_op=None, verbose=10):
-        input_story, input_question, input_labels,\
-        X_length, Y_length, Indices_word, Indices_sentence,\
+        input_story, input_question, input_labels, \
+        X_length, Y_length, Indices_word, Indices_sentence, \
         qX_length, qY_length, qIndices_word = data
 
         config = self.config
@@ -570,14 +570,14 @@ if __name__ == "__main__":
         story_char_maxlen = max(map(len, (x for x, _, _ in train_char + test)))
         query_char_maxlen = max(map(len, (x for _, x, _ in train + test)))
 
-        story_word_maxlen, query_word_maxlen, story_maxsteps\
+        story_word_maxlen, query_word_maxlen, story_maxsteps \
             = max(maximums(tar.extractfile(task_path.format('train'))),
                   maximums(tar.extractfile(task_path.format('test'))))
 
-        X, Xq, Y, X_length, Y_length, Indices_word,\
+        X, Xq, Y, X_length, Y_length, Indices_word, \
         Indices_sentence, qX_length, qY_length, qIndices_word = vectorize_stories(train, char_idx, word_idx)
 
-        tX, tXq, tY, tX_length, tY_length, tIndices_word,\
+        tX, tXq, tY, tX_length, tY_length, tIndices_word, \
         tIndices_sentence, tqX_length, tqY_length, tqIndices_word = vectorize_stories(test, char_idx, word_idx)
 
         if verbose:
@@ -611,7 +611,7 @@ if __name__ == "__main__":
                     if verbose:
                         print('Epoch {}'.format(epoch))
 
-                        train_loss, train_acc, val_acc, Story, Question, Answer, Prediction\
+                        train_loss, train_acc, val_acc, Story, Question, Answer, Prediction \
                             = model.run_epoch(session, (X, Xq, Y, X_length, Y_length, Indices_word,
                                                         Indices_sentence, qX_length, qY_length, qIndices_word),
                                               train_op=model.train_step)
@@ -630,7 +630,7 @@ if __name__ == "__main__":
                                                            tIndices_word, tIndices_sentence, tqX_length,
                                                            tqY_length, tqIndices_word))
                         print('Testing acc: {}'.format(test_acc))
-                    if epoch %100 == 0:
+                    if epoch % 100 == 0:
                         save_path = saver.save(session, os.path.join(model_dir, "model"))
                         print("Model saved in file: %s" % save_path)
 
