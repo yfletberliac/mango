@@ -30,15 +30,17 @@ class Config:
         pass
 
     batch_size = 32
-    embed_size = 100
-    hidden_size = 100
+    embed_size = 50
+    hidden_size = 50
+    max_epochs = 5000
+    dropout = 0.7
+    lr = 0.8
+    L2 = 0.001
+
     vocab_size = None
     num_steps_sentence = None
     num_steps_story = None
     num_steps_question = None
-    max_epochs = 600
-    dropout = 1
-    lr = 0.5
 
 
 class RNN_Model:
@@ -58,7 +60,7 @@ class RNN_Model:
 
         with tf.name_scope('Loss'):
             loss, lossL2 = self.add_loss_op(self.output)
-            self.calculate_loss = loss + 0.001 * lossL2
+            self.calculate_loss = loss + self.config.L2 * lossL2
         with tf.name_scope('Train'):
             self.train_step = self.add_training_op(self.calculate_loss)
 
@@ -165,9 +167,9 @@ class RNN_Model:
 
         with tf.variable_scope('stacked_qrn') as scope:
             a, b = custom_bidirectional_dynamic_rnn(qrn, qrn,
-                                             [inputs_story, inputs_question],
-                                             sequence_length=self.X_length,
-                                             dtype=tf.float32)
+                                                    [inputs_story, inputs_question],
+                                                    sequence_length=self.X_length,
+                                                    dtype=tf.float32)
             scope.reuse_variables()
 
             a, b = custom_bidirectional_dynamic_rnn(qrn, qrn, [inputs_story, tf.reduce_sum(a, 0)], dtype=tf.float32)
@@ -486,27 +488,22 @@ def custom_bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=N
 
 
 tasks = [
-    'qa1_single-supporting-fact', 'qa2_two-supporting-facts', 'qa3_three-supporting-facts',
-    'qa4_two-arg-relations', 'qa5_three-arg-relations', 'qa6_yes-no-questions', 'qa7_counting',
-    'qa8_lists-sets', 'qa9_simple-negation', 'qa10_indefinite-knowledge',
-    'qa11_basic-coreference', 'qa12_conjunction', 'qa13_compound-coreference',
-    'qa14_time-reasoning', 'qa15_basic-deduction', 'qa16_basic-induction', 'qa17_positional-reasoning',
-    'qa18_size-reasoning', 'qa19_path-finding', 'qa20_agents-motivations'
+    'qa2_two-supporting-facts', 'qa3_three-supporting-facts'
 ]
 
 if __name__ == "__main__":
-    for seed in [1234, 5678]:
-        print("%i (seed)" % seed)
-        np.random.seed(seed)  # for reproducibility
-        verbose = True
+    verbose = True
 
-        path = 'datasets/babi_tasks_data_1_20_v1.2.tar.gz'
-        tar = tarfile.open(path)
-        tasks_dir = 'tasks_1-20_v1-2/en/'
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S_1k_final")
+    path = 'datasets/babi_tasks_data_1_20_v1.2.tar.gz'
+    tar = tarfile.open(path)
+    tasks_dir = 'tasks_1-20_v1-2/en/'
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S_1k_final200")
 
-        for task in tasks:
-            print(task)
+    for task in tasks:
+        print(task)
+        for seed in [3242, 3892]:
+            print("%i (seed)" % seed)
+            np.random.seed(seed)  # for reproducibility
 
             task_path = tasks_dir + task + '_{}.txt'
             train = get_stories(tar.extractfile(task_path.format('train')))
@@ -549,7 +546,7 @@ if __name__ == "__main__":
 
                 with tf.Session() as session:
                     session.run(init)
-                    model_dir = os.path.join("logs_QRN/", task, str(timestamp))
+                    model_dir = os.path.join("logs_QRN/", task, str(timestamp+"_"+str(seed)))
                     writer = tf.summary.FileWriter(model_dir, graph=g)
                     # saver.restore(session, "logs_Char2Word/qa1_single-supporting-fact/good/model")
                     for epoch in range(config.max_epochs):

@@ -28,8 +28,13 @@ class Config:
         pass
 
     batch_size = 32
-    embed_size = 50
-    hidden_size = 50
+    embed_size = 10
+    hidden_size = 10
+    max_epochs = 500
+    dropout = 1
+    lr = 0.004
+    L2 = 0.0001
+
     vocab_char_size = None
     vocab_word_size = None
     num_steps_story_char = None
@@ -37,9 +42,6 @@ class Config:
     num_steps_story_word = None
     num_steps_query_word = None
     num_steps_story = None
-    max_epochs = 500
-    dropout = 1
-    lr = 0.002
 
 
 class NeuralModel:
@@ -59,7 +61,7 @@ class NeuralModel:
 
         with tf.name_scope('Loss'):
             loss, lossL2 = self.add_loss_op(self.output)
-            self.calculate_loss = loss + lossL2
+            self.calculate_loss = loss + self.config.L2 * lossL2
         with tf.name_scope('Train'):
             self.train_step = self.add_training_op(self.calculate_loss)
 
@@ -132,7 +134,7 @@ class NeuralModel:
             tf.nn.softmax_cross_entropy_with_logits(logits=output, labels=self.labels_placeholder))
         tf.add_to_collection('total_loss', cross_entropy)
         loss = tf.add_n(tf.get_collection('total_loss'))
-        lossL2 = tf.add_n([tf.nn.l2_loss(v) for v in var if 'Bias' not in v.name]) * 0.001
+        lossL2 = tf.add_n([tf.nn.l2_loss(v) for v in var if 'Bias' not in v.name])
 
         return loss, lossL2
 
@@ -235,6 +237,8 @@ class NeuralModel:
         batches = zip(range(0, n_data - config.batch_size, config.batch_size),
                       range(config.batch_size, n_data, config.batch_size))
         batches = [(start, end) for start, end in batches]
+
+        test_loss = []
         total_correct_examples = 0
         total_processed_examples = 0
         for step, (start, end) in enumerate(batches):
@@ -261,17 +265,17 @@ class NeuralModel:
                     self.Indices_word: b,
                     self.Indices_sentence: d,
                     self.qIndices_word: qb}
-            total_correct = session.run(self.correct_predictions, feed_dict=feed)
+            total_correct, loss = session.run([self.calculate_loss, self.correct_predictions], feed_dict=feed)
             total_processed_examples += end - start
             total_correct_examples += total_correct
+            test_loss.append(loss)
         acc = total_correct_examples / float(total_processed_examples)
 
-        return acc
+        return np.mean(test_loss), acc
 
     def run_epoch(self, session, data, train_op=None, verbose=10):
-        input_story, input_question, input_labels, \
-        X_length, Y_length, Indices_word, Indices_sentence, \
-        qX_length, qY_length, qIndices_word = data
+        input_story, input_question, input_labels, X_length, Y_length,\
+        Indices_word, Indices_sentence, qX_length, qY_length, qIndices_word = data
 
         config = self.config
         dp = config.dropout
@@ -329,10 +333,6 @@ class NeuralModel:
                 sys.stdout.write('\r')
         train_acc = total_correct_examples / float(total_processed_examples)
 
-        Story = []
-        Question = []
-        Answer = []
-        Prediction = []
         total_correct_examples = 0
         total_processed_examples = 0
         for step, (start, end) in enumerate(batches_val):
@@ -359,18 +359,13 @@ class NeuralModel:
                     self.Indices_word: b,
                     self.Indices_sentence: d,
                     self.qIndices_word: qb}
-            total_correct, prediction = session.run([self.correct_predictions, self.one_hot_prediction], feed_dict=feed)
+            total_correct = session.run([self.correct_predictions], feed_dict=feed)
             total_processed_examples += end - start
             total_correct_examples += total_correct
 
-            Story.append(input_story[start:end])
-            Question.append(input_question[start:end])
-            Answer.append(input_labels[start:end])
-            Prediction.append(prediction)
-
         val_acc = total_correct_examples / float(total_processed_examples)
 
-        return np.mean(total_loss), train_acc, val_acc, Story, Question, Answer, Prediction
+        return np.mean(total_loss), train_acc, val_acc
 
 
 def tokenize_word(sent):
@@ -408,11 +403,11 @@ def parse_stories(lines, only_supporting=False):
                 # Only select the related substory
                 supporting = map(int, supporting.split())
                 substory = [story[i - 1] for i in supporting]
-                ques = [x for x in q[:-1] if x]
+                ques = [x for x in q if x]
             else:
                 # Provide all the substories
                 substory = [x for x in story if x]
-                ques = [x for x in q[:-1] if x]
+                ques = [x for x in q if x]
             data.append((substory, ques, a))
             story.append('')
         else:
@@ -451,11 +446,11 @@ def parse_stories_word(lines, only_supporting=False):
                 # Only select the related substory
                 supporting = map(int, supporting.split())
                 substory = [story[i - 1] for i in supporting]
-                ques = [x for x in q[:-1] if x]
+                ques = [x for x in q if x]
             else:
                 # Provide all the substories
                 substory = [x for x in story if x]
-                ques = [x for x in q[:-1] if x]
+                ques = [x for x in q if x]
             data.append((substory, ques, a))
             story.append('')
         else:
@@ -529,8 +524,7 @@ def vectorize_stories(data_char, char_idx, word_idx):
 
 
 tasks = [
-    'qa1_single-supporting-fact', 'qa2_two-supporting-facts', 'qa3_three-supporting-facts',
-    'qa4_two-arg-relations', 'qa5_three-arg-relations', 'qa6_yes-no-questions', 'qa7_counting',
+    'qa5_three-arg-relations', 'qa6_yes-no-questions', 'qa7_counting',
     'qa8_lists-sets', 'qa9_simple-negation', 'qa10_indefinite-knowledge',
     'qa11_basic-coreference', 'qa12_conjunction', 'qa13_compound-coreference',
     'qa14_time-reasoning', 'qa15_basic-deduction', 'qa16_basic-induction', 'qa17_positional-reasoning',
@@ -604,32 +598,29 @@ if __name__ == "__main__":
             with tf.Session() as session:
                 session.run(init)
                 timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                model_dir = os.path.join("logs_Char2Word_QRN/", task, str(timestamp))
+                model_dir = os.path.join("logs_Char2Word_QRN/", task, str(timestamp + "_e" + str(10)))
                 writer = tf.summary.FileWriter(model_dir, graph=g)
                 # saver.restore(session, "logs_Char2Word/qa1_single-supporting-fact/good/model")
                 for epoch in range(config.max_epochs):
                     if verbose:
                         print('Epoch {}'.format(epoch))
 
-                        train_loss, train_acc, val_acc, Story, Question, Answer, Prediction \
-                            = model.run_epoch(session, (X, Xq, Y, X_length, Y_length, Indices_word,
-                                                        Indices_sentence, qX_length, qY_length, qIndices_word),
-                                              train_op=model.train_step)
+                        train_loss, train_acc, val_acc = model.run_epoch(session, (X, Xq, Y, X_length, Y_length,
+                                                                                   Indices_word, Indices_sentence,
+                                                                                   qX_length, qY_length, qIndices_word),
+                                                                         train_op=model.train_step)
 
                     if verbose:
                         print('Training loss: {}'.format(train_loss))
                         print('Training acc: {}'.format(train_acc))
                         print('Validation acc: {}'.format(val_acc))
-                        # print([[idx_word[j] for j in i] for i in Story[0][20]])
-                        # print([idx_word[i] for i in Question[0][20]])
-                        # print('Answer: {}'.format(idx_word[Answer[0][20].tolist().index(1.)]))
-                        # print('Prediction: {}'.format(idx_word[Prediction[0][20]]))
 
                     if epoch % 20 == 0:
-                        test_acc = model.predict(session, (tX, tXq, tY, tX_length, tY_length,
-                                                           tIndices_word, tIndices_sentence, tqX_length,
-                                                           tqY_length, tqIndices_word))
+                        test_loss, test_acc = model.predict(session, (tX, tXq, tY, tX_length, tY_length,
+                                                                      tIndices_word, tIndices_sentence, tqX_length,
+                                                                      tqY_length, tqIndices_word))
                         print('Testing acc: {}'.format(test_acc))
+                        print('Testing loss: {}'.format(test_loss))
                     if epoch % 100 == 0:
                         save_path = saver.save(session, os.path.join(model_dir, "model"))
                         print("Model saved in file: %s" % save_path)
@@ -639,9 +630,11 @@ if __name__ == "__main__":
                     tf.summary.scalar("train_acc", train_acc)
                     tf.summary.scalar("val_acc", val_acc)
                     tf.summary.scalar("test_acc", test_acc)
+                    tf.summary.scalar("test_loss", test_loss)
                     train_loss_S = summary_pb2.Summary.Value(tag="train_loss", simple_value=train_loss.item())
                     train_acc_S = summary_pb2.Summary.Value(tag="train_acc", simple_value=train_acc)
                     val_acc_S = summary_pb2.Summary.Value(tag="val_acc", simple_value=val_acc)
                     test_acc_S = summary_pb2.Summary.Value(tag="test_acc", simple_value=test_acc)
-                    summary = summary_pb2.Summary(value=[train_loss_S, train_acc_S, val_acc_S, test_acc_S])
+                    test_loss_S = summary_pb2.Summary.Value(tag="test_loss", simple_value=test_loss)
+                    summary = summary_pb2.Summary(value=[train_loss_S, train_acc_S, val_acc_S, test_acc_S, test_loss_S])
                     writer.add_summary(summary, epoch)
