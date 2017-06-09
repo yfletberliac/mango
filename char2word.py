@@ -118,14 +118,14 @@ class NeuralModel:
         """
         cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=output, labels=self.labels_placeholder)
 
-        # Mask the losses
+        # mask the losses
         mask = tf.sign(tf.to_float(self.labels_placeholder))
         masked_losses = mask * cross_entropy
 
-        # Bring back to [B, T] shape
+        # bring back to [B, T] shape
         masked_losses = tf.reshape(masked_losses, tf.shape(self.labels_placeholder))
 
-        # Calculate mean loss
+        # calculate mean loss
         mean_loss_by_example = tf.reduce_sum(masked_losses, reduction_indices=1) / tf.to_float(self.Y_length)
         mean_loss = tf.reduce_mean(mean_loss_by_example)
 
@@ -157,7 +157,6 @@ class NeuralModel:
         """
         with tf.variable_scope('Char2Word'):
             cell0 = tf.contrib.rnn.BasicRNNCell(self.config.hidden_size)
-            # cell0 = tf.contrib.rnn.MultiRNNCell(cells=[cell0] * 4)
             cell0 = tf.contrib.rnn.DropoutWrapper(cell0, input_keep_prob=self.dropout_placeholder,
                                                   output_keep_prob=self.dropout_placeholder)
             self.initial_state0 = cell0.zero_state(self.config.batch_size, tf.float32)
@@ -167,7 +166,7 @@ class NeuralModel:
                                                                  initial_state=self.initial_state0)
 
             indices_word = tf.reshape(self.Indices_word, [-1, 2])
-            ## Extract the time steps corresponding to the end of words indices_word
+            # extract the time steps corresponding to the end of words indices_word
             inputs1 = tf.gather_nd(self.outputs0, indices_word)
             print(inputs1)
             inputs1 = tf.reshape(inputs1, [self.config.batch_size, self.config.num_steps_story_word,
@@ -175,7 +174,6 @@ class NeuralModel:
 
         with tf.variable_scope('Word2Word'):
             cell1 = tf.contrib.rnn.BasicRNNCell(self.config.hidden_size)
-            # cell1 = tf.contrib.rnn.MultiRNNCell(cells=[cell1] * 4)
             cell1 = tf.contrib.rnn.DropoutWrapper(cell1, input_keep_prob=self.dropout_placeholder,
                                                   output_keep_prob=self.dropout_placeholder)
             self.initial_state1 = cell1.zero_state(self.config.batch_size, tf.float32)

@@ -4,7 +4,9 @@ from tensorflow.python.ops import variable_scope as vs
 
 
 class QRNCell(tf.contrib.rnn.RNNCell):
-    def __init__(self, num_units, input_size=None, activation=tanh):
+    """ Implementation of a QRN cell as described in [arXiv:1606.04582].
+    """
+    def __init__(self, num_units, activation=tanh):
         self._num_units = num_units
         self._activation = activation
 
