@@ -28,7 +28,7 @@ Query-Reduction Network without Char2Word:
 python qrn.py
 ```
 
-EntNet: soon ...
+EntNet: very soon ...
 
 ### Usage (on SQuAD dataset):
 
