@@ -453,7 +453,7 @@ if __name__ == "__main__":
     np.random.seed(1337)  # for reproducibility
     verbose = True
 
-    path = 'datasets/babi_tasks_data_1_20_v1.2.tar.gz'
+    path = 'babi/babi_tasks_data_1_20_v1.2.tar.gz'
     tar = tarfile.open(path)
     tasks_dir = 'tasks_1-20_v1-2/en/'
 

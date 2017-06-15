@@ -31,14 +31,14 @@ class Config:
     def __init__(self):
         pass
 
-    nb_pairs = 400
+    size_dataset = 400
     batch_size = 32
     embed_size = 5
     hidden_size_module = 5
     hidden_size_qrn = 20
     max_epochs = 600
     dropout = 0.6
-    lr = 0.003  # the learning rate
+    lr = 0.0003  # the learning rate
     L2 = 0.0003  # the coefficient for L2 regularization
 
     vocab_char_size = None
@@ -585,7 +585,7 @@ if __name__ == "__main__":
 
     path = 'squad/data/squad'
 
-    train_data, val_data = load_preprocess_data(path, mode_story="char", size=config.nb_pairs)
+    train_data, val_data = load_preprocess_data(path, mode_story="char", size=config.size_dataset)
 
     vocab_char = sorted(reduce(lambda x, y: x | y, (set(story_char + question_char)
                                                     for story_char, question_char, answer in

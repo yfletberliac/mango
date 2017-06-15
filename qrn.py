@@ -491,7 +491,7 @@ tasks = [
 if __name__ == "__main__":
     verbose = True
 
-    path = 'datasets/babi_tasks_data_1_20_v1.2.tar.gz'
+    path = 'babi/babi_tasks_data_1_20_v1.2.tar.gz'
     tar = tarfile.open(path)
     tasks_dir = 'tasks_1-20_v1-2/en/'
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S_1k_final200")
