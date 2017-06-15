@@ -1,10 +1,9 @@
 # Question Answering NLP with character-level RNN
 
-The models will first be challenged with the bAbI dataset from FAIR.
+The different models will first be challenged with the bAbI dataset from FAIR and the SQuAD dataset from Stanford.
 
-Next, there will be experiments on the SQuAD dataset.
 
-### Usage :
+### Usage (on bAbI dataset):
 
 Query-Reduction Network with Char2Word:
 ```bash
@@ -16,7 +15,12 @@ Query-Reduction Network without Char2Word:
 python qrn.py
 ```
 
-Entity Neural Network (first, run format_babi.py to preprocess the data):
+EntNet:
+will be soon here ...
+
+### Usage (on SQuAD dataset):
+
+Query-Reduction Network with Char2Word:
 ```bash
-bash run.sh
+python mango_squad.py
 ```
