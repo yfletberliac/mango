@@ -375,7 +375,7 @@ class NeuralModel:
 
 
 def tokenize_word(sent):
-    """Return the word tokens of a sentence including punctuation.
+    """Return the word tokens of a sentence excluding punctuation.
     >> tokenize('Bob dropped the apple. Where is the apple?')
     ['Bob', 'dropped', 'the', 'apple', 'Bob', 'went', 'to', 'the', 'kitchen']
     """
@@ -384,7 +384,7 @@ def tokenize_word(sent):
 
 def tokenize_char(sent):
     """
-    Return the charactr tokens of a sentence including punctuation.
+    Return the character tokens of a sentence including punctuation.
     """
     return list(sent.lower())
 
@@ -675,8 +675,6 @@ if __name__ == "__main__":
         task_path = tasks_dir + task + '_{}.txt'
         train_char = get_stories(tar.extractfile(task_path.format('train')))
         test_char = get_stories(tar.extractfile(task_path.format('test')))
-        train = get_stories(tar.extractfile(task_path.format('train')))
-        test = get_stories(tar.extractfile(task_path.format('test')))
 
         vocab_char = sorted(reduce(lambda x, y: x | y, (set(story_char + question_char)
                                                         for story_char, question_char, answer in
@@ -691,18 +689,18 @@ if __name__ == "__main__":
         idx_char = {v: k for k, v in char_idx.iteritems()}
         idx_char[0] = "_PAD"
 
-        story_char_maxlen = max(map(len, (x for x, _, _ in train_char + test)))
-        query_char_maxlen = max(map(len, (x for _, x, _ in train + test)))
+        story_char_maxlen = max(map(len, (x for x, _, _ in train_char + test_char)))
+        query_char_maxlen = max(map(len, (x for _, x, _ in train_char + test_char)))
 
         story_word_maxlen, query_word_maxlen, story_maxsteps \
             = max(metrics(tar.extractfile(task_path.format('train'))),
                   metrics(tar.extractfile(task_path.format('test'))))
 
         X, Xq, Y, X_length, Y_length, Indices_word, \
-        Indices_sentence, qX_length, qY_length, qIndices_word = vectorize_stories(train, char_idx, word_idx)
+        Indices_sentence, qX_length, qY_length, qIndices_word = vectorize_stories(train_char, char_idx, word_idx)
 
         tX, tXq, tY, tX_length, tY_length, tIndices_word, \
-        tIndices_sentence, tqX_length, tqY_length, tqIndices_word = vectorize_stories(test, char_idx, word_idx)
+        tIndices_sentence, tqX_length, tqY_length, tqIndices_word = vectorize_stories(test_char, char_idx, word_idx)
 
         if verbose:
             print('vocab_char = {}'.format(vocab_char))
@@ -735,8 +733,19 @@ if __name__ == "__main__":
                     if verbose:
                         print('Epoch {}'.format(epoch))
 
-                        train_loss, train_acc, val_acc = model.run_epoch(session, (X, Xq, Y, X_length, Y_length,
-                                                                                   Indices_word, Indices_sentence,
+                        print(X)
+                        print(Xq)
+                        print(Y)
+                        print(X_length)
+                        print(Y_length)
+                        print(Indices_word)
+                        print(Indices_sentence)
+                        print(qX_length)
+                        print(qY_length)
+                        print(qIndices_word)
+
+                        train_loss, train_acc, val_acc =\
+                            model.run_epoch(session, (X, Xq, Y, X_length, Y_length, Indices_word,Indices_sentence,
                                                                                    qX_length, qY_length, qIndices_word),
                                                                          train_op=model.train_step)
 

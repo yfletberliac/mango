@@ -272,7 +272,7 @@ class RNN_Model:
 
 
 def tokenize_word(sent):
-    """Return the tokens of a sentence including punctuation.
+    """Return the tokens of a sentence excluding punctuation.
     >> tokenize('Bob dropped the apple. Where is the apple?')
     ['Bob', 'dropped', 'the', 'apple', 'Bob', 'went', 'to', 'the', 'kitchen']
     """
@@ -281,7 +281,7 @@ def tokenize_word(sent):
 
 def tokenize_char(sent):
     """
-    Tokenize a string by splitting on characters.
+    Return the character tokens of a sentence including punctuation.
     """
     return list(sent.lower())
 
