@@ -31,15 +31,15 @@ class Config:
     def __init__(self):
         pass
 
-    size_dataset = 400
-    batch_size = 32
+    size_dataset = 10000
+    batch_size = 128
     embed_size = 5
     hidden_size_module = 5
-    hidden_size_qrn = 20
+    hidden_size_qrn = 50
     max_epochs = 600
-    dropout = 0.6
-    lr = 0.0003  # the learning rate
-    L2 = 0.0003  # the coefficient for L2 regularization
+    dropout = 0.8
+    lr = 0.001  # the learning rate
+    L2 = 0.0000  # the coefficient for L2 regularization
 
     vocab_char_size = None
     vocab_word_size = None
@@ -57,16 +57,16 @@ class NeuralModel:
         self.inputs_story, self.inputs_question = self.add_embedding()
         story_question_state = self.add_model(self.inputs_story, self.inputs_question)
 
-        self.output = self.add_projection(story_question_state)
+        output = self.add_projection(story_question_state)
 
         with tf.name_scope('Accuracy'):
-            self.predictions = tf.nn.softmax(self.output)
+            self.predictions = tf.nn.softmax(output)
             self.one_hot_prediction = tf.argmax(self.predictions, 1)
             correct_prediction = tf.equal(tf.argmax(self.labels_placeholder, 1), self.one_hot_prediction)
             self.correct_predictions = tf.reduce_sum(tf.cast(correct_prediction, 'int32'))
 
         with tf.name_scope('Loss'):
-            loss, lossL2 = self.add_loss_op(self.output)
+            loss, lossL2 = self.add_loss_op(output)
             self.calculate_loss = loss + self.config.L2 * lossL2
         with tf.name_scope('Train'):
             self.train_step = self.add_training_op(self.calculate_loss)
@@ -219,7 +219,7 @@ class NeuralModel:
 
         with tf.variable_scope('QRN') as scope:
             # the qrn cell
-            qrn = QRNCell(self.config.hidden_size_qrn, self.config.hidden_size_qrn)
+            qrn = QRNCell(self.config.hidden_size_qrn)
 
             a, b = custom_bidirectional_dynamic_rnn(qrn, qrn,
                                      [inputs2, qinputs2],
@@ -233,7 +233,7 @@ class NeuralModel:
         return tf.reduce_sum(b, 0)
 
     def predict(self, session, data):
-        # validation
+        # test
         input_story, input_question, input_labels, \
         X_length, Y_length, Indices_word, Indices_sentence, \
         qX_length, qY_length, qIndices_word = data
@@ -272,6 +272,7 @@ class NeuralModel:
                     self.Indices_sentence: d,
                     self.qIndices_word: qb}
             loss, total_correct = session.run([self.calculate_loss, self.correct_predictions], feed_dict=feed)
+
             total_processed_examples += end - start
             total_correct_examples += total_correct
             test_loss.append(loss)
@@ -297,7 +298,6 @@ class NeuralModel:
         np.random.shuffle(batches)
         n_val = int(len(batches) * 0.1)
         batches_train = batches[:-n_val]
-        batches_val = batches[-n_val:]
 
         total_loss = []
         total_correct_examples = 0
@@ -338,37 +338,7 @@ class NeuralModel:
                 sys.stdout.write('\r')
         train_acc = total_correct_examples / float(total_processed_examples)
 
-        total_correct_examples = 0
-        total_processed_examples = 0
-        for step, (start, end) in enumerate(batches_val):
-            a = [[y[0] - start, y[1]] for x in Indices_word[start:end] for y in x]
-            b = [a[i:i + self.config.num_steps_story_word]
-                 for i in range(0, len(a), self.config.num_steps_story_word)]
-            c = [[y[0] - start, y[1]] for x in Indices_sentence[start:end] for y in x]
-            d = [c[i:i + self.config.num_steps_story]
-                 for i in range(0, len(c), self.config.num_steps_story)]
-            qa = [[y[0] - start, y[1]] for x in qIndices_word[start:end] for y in x]
-            qb = [qa[i:i + self.config.num_steps_query_word]
-                  for i in range(0, len(qa), self.config.num_steps_query_word)]
-
-            feed = {self.input_story_placeholder: input_story[start:end],
-                    self.input_question_placeholder: input_question[start:end],
-                    self.labels_placeholder: input_labels[start:end],
-                    self.dropout_placeholder: 1,
-                    self.X_length: X_length[start:end],
-                    self.Y_length: Y_length[start:end],
-                    self.qX_length: qX_length[start:end],
-                    self.qY_length: qY_length[start:end],
-                    self.Indices_word: b,
-                    self.Indices_sentence: d,
-                    self.qIndices_word: qb}
-            total_correct = session.run(self.correct_predictions, feed_dict=feed)
-            total_processed_examples += end - start
-            total_correct_examples += total_correct
-
-        val_acc = total_correct_examples / float(total_processed_examples)
-
-        return np.mean(total_loss), train_acc, val_acc
+        return np.mean(total_loss), train_acc
 
 
 def tokenize_word(sent):
@@ -654,44 +624,44 @@ if __name__ == "__main__":
         with tf.Session() as session:
             session.run(init)
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            model_dir = os.path.join("logs_mango_squad/", str(timestamp + "_e" + str(config.embed_size)))
+            model_dir = os.path.join("logs_mango_squad/", str(timestamp + "_bs" + str(config.batch_size) + "_ec2w" + str(config.embed_size) + "_eqrn" + str(config.hidden_size_qrn) + "_dp" + str(config.dropout) + "_lr" + str(config.lr) + "_l2" + str(config.L2) + "_size" + str(config.size_dataset)))
             writer = tf.summary.FileWriter(model_dir, graph=g)
             # saver.restore(session, "logs_Char2Word/qa1_single-supporting-fact/good/model")
             for epoch in range(config.max_epochs):
+
                 if verbose:
                     print('Epoch {}'.format(epoch))
-
-                    train_loss, train_acc, val_acc =\
+                    train_acc = 0.0
+                    train_loss = []
+                    train_loss, train_acc =\
                         model.run_epoch(session, (X, Xq, Y, X_length, Y_length, Indices_word,
                                                   Indices_sentence, qX_length, qY_length, qIndices_word),
                                         train_op=model.train_step)
 
-                if verbose:
-                    print('Training loss: {}'.format(train_loss))
-                    print('Training acc: {}'.format(train_acc))
-                    print('Validation acc: {}'.format(val_acc))
+                print('Training loss: {}'.format(train_loss))
+                print('Training acc: {}'.format(train_acc))
 
-                if epoch % 20 == 0:
+                if epoch % 2 == 0:
+                    test_acc = 0.0
+                    test_loss = []
                     test_loss, test_acc = model.predict(session, (tX, tXq, tY, tX_length, tY_length,
                                                                   tIndices_word, tIndices_sentence, tqX_length,
                                                                   tqY_length, tqIndices_word))
-                    print('Testing loss: {}'.format(test_loss))
-                    print('Testing acc: {}'.format(test_acc))
+                print('Testing loss: {}'.format(test_loss))
+                print('Testing acc: {}'.format(test_acc))
 
-                if epoch % 100 == 0:
-                    save_path = saver.save(session, os.path.join(model_dir, "model"))
-                    print("Model saved in file: %s" % save_path)
+                # if epoch % 100 == 0:
+                #     save_path = saver.save(session, os.path.join(model_dir, "model"))
+                #     print("Model saved in file: %s" % save_path)
 
                 # save TF summaries
                 tf.summary.scalar("train_loss", train_loss)
                 tf.summary.scalar("train_acc", train_acc)
-                tf.summary.scalar("val_acc", val_acc)
                 tf.summary.scalar("test_acc", test_acc)
                 tf.summary.scalar("test_loss", test_loss)
                 train_loss_S = summary_pb2.Summary.Value(tag="train_loss", simple_value=train_loss.item())
                 train_acc_S = summary_pb2.Summary.Value(tag="train_acc", simple_value=train_acc)
-                val_acc_S = summary_pb2.Summary.Value(tag="val_acc", simple_value=val_acc)
                 test_acc_S = summary_pb2.Summary.Value(tag="test_acc", simple_value=test_acc)
                 test_loss_S = summary_pb2.Summary.Value(tag="test_loss", simple_value=test_loss.item())
-                summary = summary_pb2.Summary(value=[train_loss_S, train_acc_S, val_acc_S, test_acc_S, test_loss_S])
+                summary = summary_pb2.Summary(value=[train_loss_S, train_acc_S, test_acc_S, test_loss_S])
                 writer.add_summary(summary, epoch)
