@@ -219,7 +219,7 @@ class NeuralModel:
 
         with tf.variable_scope('QRN') as scope:
             # the qrn cell
-            qrn = QRNCell(self.config.hidden_size_qrn)
+            qrn = QRNCell(self.config.hidden_size_qrn, self.config.hidden_size_qrn)
 
             a, b = custom_bidirectional_dynamic_rnn(qrn, qrn,
                                      [inputs2, qinputs2],
