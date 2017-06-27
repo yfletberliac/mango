@@ -2,6 +2,19 @@
 
 The different models will first be challenged with the bAbI dataset from FAIR and the SQuAD dataset from Stanford.
 
+### Content:
+
+Name | Description
+--- | ---
+/babi| babi dataset and utilities
+/squad | squad dataset and utilities
+/qrn | contains the QRN cell
+char2word.py | Char2Word-only module (on bAbI dataset)
+qrn.py | implementation of the QRN model (on bAbI dataset)
+char2word_qrn.py | implementation of the QRN model w/ Char2Word module (on bAbI dataset)
+mango_squad.py | implementation of the QRN model w/ Char2Word module (on SQuAD dataset)
+
+
 
 ### Usage (on bAbI dataset):
 
@@ -15,8 +28,7 @@ Query-Reduction Network without Char2Word:
 python qrn.py
 ```
 
-EntNet:
-will be soon here ...
+EntNet: very soon ...
 
 ### Usage (on SQuAD dataset):
 
