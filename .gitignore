@@ -6,3 +6,4 @@
 data.ipynb
 *.icloud
 /logs_mango_squad
+*.pyc
