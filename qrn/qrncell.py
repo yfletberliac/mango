@@ -30,7 +30,7 @@ class QRNCell(tf.contrib.rnn.RNNCell):
         return new_h, new_h
 
 
-def linear(input_, output_size, scope=None):
+def linear(input, output_size, scope=None):
     """
     Linear map: output[k] = sum_i(Matrix[k, i] * args[i] ) + Bias[k]
     Args:
@@ -40,21 +40,14 @@ def linear(input_, output_size, scope=None):
     Returns:
     A 2D Tensor with shape [batch x output_size] equal to
     sum_i(args[i] * W[i]), where W[i]s are newly created matrices.
-    Raises:
-    ValueError: if some of the arguments has unspecified or wrong shape.
     """
 
-    shape = input_.get_shape().as_list()
-    if len(shape) != 2:
-        raise ValueError("Linear is expecting 2D arguments: %s" % str(shape))
-    if not shape[1]:
-        raise ValueError("Linear expects shape[1] of arguments: %s" % str(shape))
+    shape = input.get_shape().as_list()
     input_size = shape[1]
 
-    # Now the computation.
-    with tf.variable_scope(scope or "SimpleLinear"):
-        matrix = tf.get_variable("Matrix", [output_size, input_size], dtype=input_.dtype,
+    with tf.variable_scope(scope or "Linear"):
+        matrix = tf.get_variable("Matrix", [output_size, input_size], dtype=input.dtype,
                                  initializer=tf.contrib.layers.xavier_initializer())
-        bias_term = tf.get_variable("Bias", [output_size], dtype=input_.dtype)
+        bias_term = tf.get_variable("Bias", [output_size], dtype=input.dtype)
 
-    return tf.matmul(input_, tf.transpose(matrix)) + bias_term
+    return tf.matmul(input, tf.transpose(matrix)) + bias_term
