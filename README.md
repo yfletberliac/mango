@@ -16,7 +16,7 @@ mango_squad.py | implementation of the QRN model w/ Char2Word module (on SQuAD d
 
 
 
-### Usage (on bAbI dataset):
+### Usage (with the bAbI dataset):
 
 Query-Reduction Network with Char2Word:
 ```bash
@@ -28,9 +28,7 @@ Query-Reduction Network without Char2Word:
 python qrn.py
 ```
 
-EntNet: very soon ...
-
-### Usage (on SQuAD dataset):
+### Usage (with the SQuAD dataset):
 
 Query-Reduction Network with Char2Word:
 ```bash
